@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
+using System.Globalization;
+
 namespace Yubico.YubiKey.Piv
 {
     /// <summary>
@@ -90,5 +93,129 @@ namespace Yubico.YubiKey.Piv
         /// While not a cryptographic algorithm, it is used in the PIV Metadata.
         /// </summary>
         Pin = 0xFF
+    }
+
+    public class PivAlgorithm2
+    {
+        public int KeySizeBits { get; }
+        public PivAlgorithmType Type { get; }
+
+        public byte P1 { get; }
+
+        private PivAlgorithm2(int keySizeBits, PivAlgorithmType type, byte p1)
+        {
+            KeySizeBits = keySizeBits;
+            Type = type;
+            P1 = p1;
+        }
+
+        public static PivAlgorithm2 Create(int keySizeBits, PivAlgorithmType type, byte p1) =>
+            new PivAlgorithm2(keySizeBits, type, p1);
+
+        public int GetPrivateKeySize() =>
+            Type == PivAlgorithmType.Ecc
+                ? KeySizeBits / 8
+                : KeySizeBits / 16;
+
+        public int GetPublicKeySize() =>
+            Type == PivAlgorithmType.Ecc
+                ? (KeySizeBits / 8 * 2) + 1
+                : KeySizeBits / 8;
+
+        public bool IsEcc => Type == PivAlgorithmType.Ecc;
+        public bool IsRsa => Type == PivAlgorithmType.Rsa;
+        public bool IsAsymmetric => Type is PivAlgorithmType.Ecc || Type is PivAlgorithmType.Rsa;
+        public bool IsSymmetric => Type is PivAlgorithmType.Aes || Type is PivAlgorithmType.TripleDes;
+    }
+
+    public static class PivAlgorithms
+    {
+        public static PivAlgorithm2 EccP256 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 256, PivAlgorithmType.Ecc, p1: 0x11);
+
+        public static PivAlgorithm2 EccP384 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 384, PivAlgorithmType.Ecc, p1: 0x14);
+
+        public static PivAlgorithm2 Rsa1024 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 1024, PivAlgorithmType.Rsa, p1: 0x06);
+
+        public static PivAlgorithm2 Rsa2048 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 2048, PivAlgorithmType.Rsa, p1: 0x07);
+
+        public static PivAlgorithm2 Rsa3072 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 3072, PivAlgorithmType.Rsa, p1: 0x05);
+
+        public static PivAlgorithm2 Rsa4096 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 4096, PivAlgorithmType.Rsa, p1: 0x16);
+
+        public static PivAlgorithm2 Aes128 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 128, PivAlgorithmType.Aes, p1: 0x08);
+
+        public static PivAlgorithm2 Aes192 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 192, PivAlgorithmType.Aes, p1: 0x0A);
+
+        public static PivAlgorithm2 Aes256 { get; } =
+            PivAlgorithm2.Create(keySizeBits: 256, PivAlgorithmType.Aes, p1: 0x0C);
+
+        public static PivAlgorithm2 TripleDes { get; } =
+            PivAlgorithm2.Create(keySizeBits: 192, PivAlgorithmType.TripleDes, p1: 0x03);
+
+        public static readonly PivAlgorithm2[] AllAlgorithms =
+        {
+            EccP256, EccP384, Rsa1024, Rsa2048, Rsa3072, Rsa4096, Aes128, Aes192, Aes256, TripleDes
+        };
+    }
+
+    public static class AsymmetricKeySizeHelper
+    {
+        public static PivAlgorithm2 DetermineFromPrivateKey(ReadOnlySpan<byte> privateKey) =>
+            privateKey.Length switch
+            {
+                32 => PivAlgorithms.EccP256,
+                48 => PivAlgorithms.EccP384,
+                64 => PivAlgorithms.Rsa1024,
+                128 => PivAlgorithms.Rsa2048,
+                192 => PivAlgorithms.Rsa3072,
+                256 => PivAlgorithms.Rsa4096,
+                _ => throw new ArgumentException(
+                    string.Format(
+                        CultureInfo.CurrentCulture,
+                        ExceptionMessages.InvalidPrivateKeyData))
+            };
+
+        public static PivAlgorithm2 DetermineFromPublicKey(ReadOnlySpan<byte> publicKey) =>
+            publicKey.Length switch
+            {
+                // For ECC keys, the length of the public key size is: prefix+x+y,
+                // E.g: EccP256: 1+32+32 = 65
+                //      EccP256: 1+48+48 = 97
+                65 => PivAlgorithms.EccP256,
+                97 => PivAlgorithms.EccP384,
+                _ => DetermineFromModulus(publicKey)
+            };
+
+        private static PivAlgorithm2 DetermineFromModulus(ReadOnlySpan<byte> modulus)
+        {
+            int keySize = modulus.Length * 8;
+            return keySize switch
+            {
+                1024 => PivAlgorithms.Rsa1024,
+                2048 => PivAlgorithms.Rsa2048,
+                3072 => PivAlgorithms.Rsa3072,
+                4096 => PivAlgorithms.Rsa4096,
+                _ => throw new ArgumentException(
+                    string.Format(
+                        CultureInfo.CurrentCulture,
+                        ExceptionMessages.InvalidPublicKeyData))
+            };
+        }
+    }
+
+    public enum PivAlgorithmType
+    {
+        Rsa,
+        Ecc,
+        Aes,
+        TripleDes
     }
 }

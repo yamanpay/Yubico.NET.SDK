@@ -49,8 +49,6 @@ namespace Yubico.YubiKey.Piv
     {
         private const int PublicKeyTag = 0x7F49;
         private const int EccTag = 0x86;
-        private const int EccP256PublicKeySize = 65;
-        private const int EccP384PublicKeySize = 97;
         private const int SliceIndex = 3;
         private const byte LeadingEccByte = 0x04;
 
@@ -169,21 +167,7 @@ namespace Yubico.YubiKey.Piv
         // return false.
         private bool LoadEccPublicKey(ReadOnlySpan<byte> publicPoint)
         {
-            switch (publicPoint.Length)
-            {
-                case EccP256PublicKeySize:
-                    Algorithm = PivAlgorithm.EccP256;
-
-                    break;
-
-                case EccP384PublicKeySize:
-                    Algorithm = PivAlgorithm.EccP384;
-
-                    break;
-
-                default:
-                    return false;
-            }
+            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPublicKey(publicPoint).P1;
 
             if (publicPoint[0] != LeadingEccByte)
             {

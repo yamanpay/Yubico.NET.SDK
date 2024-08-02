@@ -199,24 +199,7 @@ namespace Yubico.YubiKey.Piv
         // return false.
         private bool LoadRsaPublicKey(ReadOnlySpan<byte> modulus, ReadOnlySpan<byte> publicExponent)
         {
-            int keySize = modulus.Length * 8;
-            switch (keySize)
-            {
-                case 1024:
-                    Algorithm = PivAlgorithm.Rsa1024;
-                    break;
-                case 2048:
-                    Algorithm = PivAlgorithm.Rsa2048;
-                    break;
-                case 3072:
-                    Algorithm = PivAlgorithm.Rsa3072;
-                    break;
-                case 4096:
-                    Algorithm = PivAlgorithm.Rsa4096;
-                    break;
-                default:
-                    return false;
-            }
+            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPublicKey(modulus).P1;
 
             // Make sure the most significant bit of the modulus is positive
             if ((modulus[0] & 0x80) == 0)

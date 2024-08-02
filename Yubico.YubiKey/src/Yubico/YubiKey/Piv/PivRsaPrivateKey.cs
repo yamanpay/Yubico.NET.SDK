@@ -53,11 +53,7 @@ namespace Yubico.YubiKey.Piv
         private const int PrimeQTag = 0x02;
         private const int ExponentPTag = 0x03;
         private const int ExponentQTag = 0x04;
-        private const int CoefficientTag = 0x05;
-        private const int Rsa1024CrtBlockSize = 64;
-        private const int Rsa2048CrtBlockSize = 128;
-        private const int Rsa3072CrtBlockSize = 192;
-        private const int Rsa4096CrtBlockSize = 256;
+        private const int CoefficientTag = 0x05; 
         private const int CrtComponentCount = 5;
 
         private Memory<byte> _primeP;
@@ -136,18 +132,8 @@ namespace Yubico.YubiKey.Piv
             ReadOnlySpan<byte> exponentQ,
             ReadOnlySpan<byte> coefficient)
         {
-            Algorithm = primeP.Length switch
-            {
-                Rsa1024CrtBlockSize => PivAlgorithm.Rsa1024,
-                Rsa2048CrtBlockSize => PivAlgorithm.Rsa2048,
-                Rsa3072CrtBlockSize => PivAlgorithm.Rsa3072,
-                Rsa4096CrtBlockSize => PivAlgorithm.Rsa4096,
-                _ => throw new ArgumentException(
-                    string.Format(
-                        CultureInfo.CurrentCulture,
-                        ExceptionMessages.InvalidPrivateKeyData)),
-            };
-
+            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPrivateKey(primeP).P1;
+            
             if (primeQ.Length != primeP.Length || exponentP.Length != primeP.Length
                 || exponentQ.Length != primeP.Length || coefficient.Length != primeP.Length)
             {

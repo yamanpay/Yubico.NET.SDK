@@ -30,9 +30,6 @@ namespace Yubico.YubiKey.Piv
     public sealed class PivEccPrivateKey : PivPrivateKey
     {
         private const int EccTag = 0x06;
-        private const int EccP256PrivateKeySize = 32;
-        private const int EccP384PrivateKeySize = 48;
-
         private Memory<byte> _privateValue;
 
         // <summary>
@@ -68,15 +65,7 @@ namespace Yubico.YubiKey.Piv
         /// </exception>
         public PivEccPrivateKey(ReadOnlySpan<byte> privateValue)
         {
-            Algorithm = privateValue.Length switch
-            {
-                EccP256PrivateKeySize => PivAlgorithm.EccP256,
-                EccP384PrivateKeySize => PivAlgorithm.EccP384,
-                _ => throw new ArgumentException(
-                    string.Format(
-                        CultureInfo.CurrentCulture,
-                        ExceptionMessages.InvalidPrivateKeyData)),
-            };
+            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPrivateKey(privateValue).P1;
 
             var tlvWriter = new TlvWriter();
             tlvWriter.WriteValue(EccTag, privateValue);
