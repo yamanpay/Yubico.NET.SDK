@@ -41,7 +41,11 @@ namespace Yubico.YubiKey.Piv.Commands
         /// <summary>
         /// The algorithm of the key used. See <see cref="PivAlgorithm"/>
         /// </summary>
-        internal PivAlgorithm Algorithm { get; set; }
+
+        //TODO Handle - keep algorithmIdentifier or not?
+        internal PivAlgorithm Algorithm => (PivAlgorithm)AlgorithmIdentifier;
+
+        internal byte AlgorithmIdentifier { get; set; }
 
         /// <summary>
         /// The tag used for building the data portion of the APDU.
@@ -82,13 +86,16 @@ namespace Yubico.YubiKey.Piv.Commands
             }
         }
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Constructs the Apdu for the <see cref="CreateCommandApdu"/> command.
+        /// </summary>
+        /// <returns>The <see cref="CommandApdu"/> object</returns>
         public CommandApdu CreateCommandApdu() => new CommandApdu
         {
             Ins = PivAuthenticateInstruction,
-            P1 = (byte)Algorithm,
+            P1 = AlgorithmIdentifier,
             P2 = SlotNumber,
-            Data = BuildGeneralAuthenticateApduData(),
+            Data = BuildGeneralAuthenticateApduData()
         };
 
         /// <summary>

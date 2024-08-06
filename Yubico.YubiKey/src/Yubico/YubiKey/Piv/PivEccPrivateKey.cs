@@ -65,8 +65,8 @@ namespace Yubico.YubiKey.Piv
         /// </exception>
         public PivEccPrivateKey(ReadOnlySpan<byte> privateValue)
         {
-            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPrivateKey(privateValue).P1;
-
+            AlgorithmIdentifier = AsymmetricKeySizeHelper.DetermineFromPrivateKey(privateValue).Identifier;
+            
             var tlvWriter = new TlvWriter();
             tlvWriter.WriteValue(EccTag, privateValue);
             EncodedKey = tlvWriter.Encode();

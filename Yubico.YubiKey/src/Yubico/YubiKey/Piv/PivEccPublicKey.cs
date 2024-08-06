@@ -49,7 +49,6 @@ namespace Yubico.YubiKey.Piv
     {
         private const int PublicKeyTag = 0x7F49;
         private const int EccTag = 0x86;
-        private const int SliceIndex = 3;
         private const byte LeadingEccByte = 0x04;
 
         private Memory<byte> _publicPoint;
@@ -167,15 +166,20 @@ namespace Yubico.YubiKey.Piv
         // return false.
         private bool LoadEccPublicKey(ReadOnlySpan<byte> publicPoint)
         {
-            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPublicKey(publicPoint).P1;
-
-            if (publicPoint[0] != LeadingEccByte)
+            if (!TryValidateParameters(publicPoint))
             {
                 return false;
             }
 
-            var tlvWriter = new TlvWriter();
+            if (!AsymmetricKeySizeHelper.TryDetermineFromPublicKey(publicPoint, out PivAlgorithm2 algorithm2))
+            {
+                return false;
+            }
+            
+            //TODO Handle - keep algorithmIdentifier or not?
+            AlgorithmIdentifier = algorithm2.Identifier;
 
+            var tlvWriter = new TlvWriter();
             using (tlvWriter.WriteNestedTlv(PublicKeyTag))
             {
                 tlvWriter.WriteValue(EccTag, publicPoint);
@@ -183,11 +187,28 @@ namespace Yubico.YubiKey.Piv
 
             PivEncodedKey = tlvWriter.Encode();
 
-            // The Metadate encoded key is the contents of the nested. So set
-            // that to be a slice of the EncodedKey.
-            YubiKeyEncodedKey = PivEncodedKey[SliceIndex..];
+            // Since the public key is nested within the TLV structure, 
+            // we must offset by {KeyOffsetIndex} to access the public key.
+            // The keyOffsetIndex is 3 for the Ecc key sizes we support.
+            const int KeyOffsetIndex = 3;
+            YubiKeyEncodedKey = PivEncodedKey[KeyOffsetIndex..];
 
             _publicPoint = new Memory<byte>(publicPoint.ToArray());
+
+            return true;
+        }
+
+        private static bool TryValidateParameters(ReadOnlySpan<byte> publicPoint)
+        {
+            if (publicPoint.IsEmpty)
+            {
+                return false;
+            }
+
+            if (publicPoint[0] != LeadingEccByte)
+            {
+                return false;
+            }
 
             return true;
         }

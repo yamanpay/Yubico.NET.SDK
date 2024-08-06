@@ -244,7 +244,7 @@ namespace Yubico.YubiKey.Piv.Commands
         /// to be valid, the slot number and algorithm must be specified. So if
         /// you create an object using this constructor, you must set the
         /// SlotNumber and Algorithm properties at some time before using it.
-        /// Otherwise you will get an exception when you do use it.
+        /// Otherwise, you will get an exception when you do use it.
         /// </para>
         /// </remarks>
         public GenerateKeyPairCommand()
@@ -287,6 +287,7 @@ namespace Yubico.YubiKey.Piv.Commands
             byte[] data = {
                 0xAC, 0x09, 0x80, 0x01, 0x00, 0xAA, 0x01, 0x00, 0xAB, 0x01, 0x00
             };
+            
             data[IndexAlgorithmByte] = (byte)Algorithm;
             data[IndexTouchPolicyByte] = (byte)TouchPolicy;
             data[IndexPinPolicyByte] = (byte)PinPolicy;

@@ -75,6 +75,20 @@ namespace Yubico.YubiKey.Piv.Commands
         }
 
         [Theory]
+        [InlineData(PivAlgorithm.EccP256)]
+        [InlineData(PivAlgorithm.EccP384)]
+        [InlineData(PivAlgorithm.Rsa1024)]
+        [InlineData(PivAlgorithm.Rsa2048)]
+        [InlineData(PivAlgorithm.Rsa3072)]
+        [InlineData(PivAlgorithm.Rsa4096)]
+        public void Constructor_SetsCorrect_AlgorithmIdentifier(PivAlgorithm algorithm)
+        {
+            byte[] digest = PivCommandResponseTestData.GetDigestData(algorithm);
+            var command = new AuthenticateSignCommand(digest, 0x95);
+            Assert.Equal((byte)algorithm, command.AlgorithmIdentifier);
+        }
+
+        [Theory]
         [InlineData(0x9A, PivAlgorithm.EccP256)]
         [InlineData(0x9C, PivAlgorithm.EccP384)]
         [InlineData(0x82, PivAlgorithm.Rsa1024)]

@@ -132,16 +132,8 @@ namespace Yubico.YubiKey.Piv
             ReadOnlySpan<byte> exponentQ,
             ReadOnlySpan<byte> coefficient)
         {
-            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPrivateKey(primeP).P1;
-            
-            if (primeQ.Length != primeP.Length || exponentP.Length != primeP.Length
-                || exponentQ.Length != primeP.Length || coefficient.Length != primeP.Length)
-            {
-                throw new ArgumentException(
-                    string.Format(
-                        CultureInfo.CurrentCulture,
-                        ExceptionMessages.InvalidPrivateKeyData));
-            }
+            ValidateKeyParameters(primeP, primeQ, exponentP, exponentQ, coefficient);
+            AlgorithmIdentifier = AsymmetricKeySizeHelper.DetermineFromPrivateKey(primeP).Identifier;
 
             var tlvWriter = new TlvWriter();
             tlvWriter.WriteValue(PrimePTag, primeP);
@@ -156,6 +148,25 @@ namespace Yubico.YubiKey.Piv
             _exponentP = new Memory<byte>(exponentP.ToArray());
             _exponentQ = new Memory<byte>(exponentQ.ToArray());
             _coefficient = new Memory<byte>(coefficient.ToArray());
+        }
+
+        private static void ValidateKeyParameters(
+            ReadOnlySpan<byte> primeP,
+            ReadOnlySpan<byte> primeQ,
+            ReadOnlySpan<byte> exponentP,
+            ReadOnlySpan<byte> exponentQ,
+            ReadOnlySpan<byte> coefficient)
+        {
+            if (primeQ.Length != primeP.Length ||
+                exponentP.Length != primeP.Length ||
+                exponentQ.Length != primeP.Length ||
+                coefficient.Length != primeP.Length)
+            {
+                throw new ArgumentException(
+                    string.Format(
+                        CultureInfo.CurrentCulture,
+                        ExceptionMessages.InvalidPrivateKeyData));
+            }
         }
 
         /// <summary>

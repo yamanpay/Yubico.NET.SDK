@@ -155,8 +155,8 @@ namespace Yubico.YubiKey.Piv.Commands
         /// <param name="algorithm">
         /// The algorithm (and key size) of the key pair generated.
         /// </param>
-        public GenerateKeyPairResponse(ResponseApdu responseApdu, byte slotNumber, PivAlgorithm algorithm) :
-            base(responseApdu)
+        public GenerateKeyPairResponse(ResponseApdu responseApdu, byte slotNumber, PivAlgorithm algorithm)
+            : base(responseApdu)
         {
             SlotNumber = slotNumber;
             Algorithm = algorithm;

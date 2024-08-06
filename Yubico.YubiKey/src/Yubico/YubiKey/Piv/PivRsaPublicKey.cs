@@ -199,8 +199,11 @@ namespace Yubico.YubiKey.Piv
         // return false.
         private bool LoadRsaPublicKey(ReadOnlySpan<byte> modulus, ReadOnlySpan<byte> publicExponent)
         {
-            Algorithm = (PivAlgorithm)AsymmetricKeySizeHelper.DetermineFromPublicKey(modulus).P1;
-
+            if (modulus.IsEmpty)
+            {
+                return false;
+            }
+            
             // Make sure the most significant bit of the modulus is positive
             if ((modulus[0] & 0x80) == 0)
             {
@@ -211,6 +214,13 @@ namespace Yubico.YubiKey.Piv
             {
                 return false;
             }
+
+            if (!AsymmetricKeySizeHelper.TryDetermineFromPublicKey(modulus, out PivAlgorithm2 algorithm2))
+            {
+                return false;
+            }
+
+            AlgorithmIdentifier = algorithm2.Identifier;
 
             var tlvWriter = new TlvWriter();
             using (tlvWriter.WriteNestedTlv(PublicKeyTag))

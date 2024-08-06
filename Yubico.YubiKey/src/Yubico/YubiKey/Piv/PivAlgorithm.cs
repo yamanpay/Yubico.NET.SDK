@@ -13,7 +13,10 @@
 // limitations under the License.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Linq;
 
 namespace Yubico.YubiKey.Piv
 {
@@ -95,81 +98,148 @@ namespace Yubico.YubiKey.Piv
         Pin = 0xFF
     }
 
-    public class PivAlgorithm2
+    public abstract class PivAlgorithm2
     {
         public int KeySizeBits { get; }
-        public PivAlgorithmType Type { get; }
+        public byte Identifier { get; }
+        public bool IsAsymmetric => !(this is SymmetricAlgorithm);
+        public bool IsRsa { get; }
+        public bool IsEcc { get; }
 
-        public byte P1 { get; }
-
-        private PivAlgorithm2(int keySizeBits, PivAlgorithmType type, byte p1)
+        protected PivAlgorithm2(int keySizeBits, byte identifier, bool isRsa, bool isEcc)
         {
             KeySizeBits = keySizeBits;
-            Type = type;
-            P1 = p1;
+            Identifier = identifier;
+            IsRsa = isRsa;
+            IsEcc = isEcc;
         }
-
-        public static PivAlgorithm2 Create(int keySizeBits, PivAlgorithmType type, byte p1) =>
-            new PivAlgorithm2(keySizeBits, type, p1);
-
-        public int GetPrivateKeySize() =>
-            Type == PivAlgorithmType.Ecc
-                ? KeySizeBits / 8
-                : KeySizeBits / 16;
-
-        public int GetPublicKeySize() =>
-            Type == PivAlgorithmType.Ecc
-                ? (KeySizeBits / 8 * 2) + 1
-                : KeySizeBits / 8;
-
-        public bool IsEcc => Type == PivAlgorithmType.Ecc;
-        public bool IsRsa => Type == PivAlgorithmType.Rsa;
-        public bool IsAsymmetric => Type is PivAlgorithmType.Ecc || Type is PivAlgorithmType.Rsa;
-        public bool IsSymmetric => Type is PivAlgorithmType.Aes || Type is PivAlgorithmType.TripleDes;
     }
 
+    public class RsaAlgorithm : PivAlgorithm2
+    {
+        public RsaAlgorithm(int keySizeBits, byte identifier)
+            : base(keySizeBits, identifier, true, false)
+        {
+        }
+    }
+
+    public class EccAlgorithm : PivAlgorithm2
+    {
+        public EccAlgorithm(int keySizeBits, byte identifier) : base(keySizeBits, identifier, false, true) { }
+    }
+
+    public class Ed25519Algorithm : PivAlgorithm2
+    {
+        public Ed25519Algorithm(byte identifier) : base(256, identifier, false, true) { }
+    }
+
+    public class X25519Algorithm : PivAlgorithm2
+    {
+        public X25519Algorithm(byte identifier) : base(256, identifier, false, true) { }
+    }
+
+    public class SymmetricAlgorithm : PivAlgorithm2
+    {
+        public SymmetricAlgorithm(int keySizeBits, byte identifier)
+            : base(keySizeBits, identifier, false, false)
+        {
+        }
+    }
+
+    [SuppressMessage("Performance", "CA1823:Avoid unused private fields")]
     public static class PivAlgorithms
     {
-        public static PivAlgorithm2 EccP256 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 256, PivAlgorithmType.Ecc, p1: 0x11);
+        public static PivAlgorithm2 EccP256 { get; } = new EccAlgorithm(256, 0x11);
+        public static PivAlgorithm2 EccP384 { get; } = new EccAlgorithm(384, 0x14);
+        public static PivAlgorithm2 Rsa1024 { get; } = new RsaAlgorithm(1024, 0x06);
+        public static PivAlgorithm2 Rsa2048 { get; } = new RsaAlgorithm(2048, 0x07);
+        public static PivAlgorithm2 Rsa3072 { get; } = new RsaAlgorithm(3072, 0x05);
+        public static PivAlgorithm2 Rsa4096 { get; } = new RsaAlgorithm(4096, 0x16);
+        public static PivAlgorithm2 Aes128 { get; } = new SymmetricAlgorithm(128, 0x08);
+        public static PivAlgorithm2 Aes192 { get; } = new SymmetricAlgorithm(192, 0x0A);
+        public static PivAlgorithm2 Aes256 { get; } = new SymmetricAlgorithm(256, 0x0C);
+        public static PivAlgorithm2 TripleDes { get; } = new SymmetricAlgorithm(192, 0x03);
 
-        public static PivAlgorithm2 EccP384 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 384, PivAlgorithmType.Ecc, p1: 0x14);
+        // public static PivAlgorithm2 Ed25519 { get; } = new Ed25519Algorithm(0x22);
+        // public static PivAlgorithm2 X25519 { get; } = new X25519Algorithm(0x23);
 
-        public static PivAlgorithm2 Rsa1024 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 1024, PivAlgorithmType.Rsa, p1: 0x06);
-
-        public static PivAlgorithm2 Rsa2048 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 2048, PivAlgorithmType.Rsa, p1: 0x07);
-
-        public static PivAlgorithm2 Rsa3072 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 3072, PivAlgorithmType.Rsa, p1: 0x05);
-
-        public static PivAlgorithm2 Rsa4096 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 4096, PivAlgorithmType.Rsa, p1: 0x16);
-
-        public static PivAlgorithm2 Aes128 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 128, PivAlgorithmType.Aes, p1: 0x08);
-
-        public static PivAlgorithm2 Aes192 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 192, PivAlgorithmType.Aes, p1: 0x0A);
-
-        public static PivAlgorithm2 Aes256 { get; } =
-            PivAlgorithm2.Create(keySizeBits: 256, PivAlgorithmType.Aes, p1: 0x0C);
-
-        public static PivAlgorithm2 TripleDes { get; } =
-            PivAlgorithm2.Create(keySizeBits: 192, PivAlgorithmType.TripleDes, p1: 0x03);
-
-        public static readonly PivAlgorithm2[] AllAlgorithms =
+        private static readonly PivAlgorithm2[] AllAlgorithms =
         {
-            EccP256, EccP384, Rsa1024, Rsa2048, Rsa3072, Rsa4096, Aes128, Aes192, Aes256, TripleDes
+            EccP256, EccP384, Rsa1024, Rsa2048, Rsa3072, Rsa4096,
+            Aes128, Aes192, Aes256, TripleDes,
+
+            // Ed25519, X25519
         };
+
+        private static readonly IReadOnlyDictionary<byte, PivAlgorithm2> AllAlgorithmsDictionary =
+            AllAlgorithms.ToDictionary(pair => pair.Identifier, pair => pair);
+
+        private static readonly IReadOnlyCollection<RsaAlgorithm> AllRsaAlgorithmList =
+            AllAlgorithms.OfType<RsaAlgorithm>().ToList();
+
+        private static readonly IReadOnlyDictionary<int, EccAlgorithm> AllEcclgorithmsDictionary =
+            AllAlgorithms.OfType<EccAlgorithm>().ToDictionary(pa => pa.KeySizeBits, pa => pa);
+
+        private static readonly IReadOnlyDictionary<int, RsaAlgorithm> AllRsaAlgorithmsDictionary =
+            AllAlgorithms
+                .OfType<RsaAlgorithm>()
+                .ToDictionary(ra => ra.KeySizeBits, ra => ra);
+
+        public static readonly IReadOnlyDictionary<int, PivAlgorithm2> AllAsymmetricAlgorithms =
+            AllAlgorithms.Where(pa => pa.IsAsymmetric).ToDictionary(pa => pa.KeySizeBits, pa => pa);
+
+        public static PivAlgorithm2? GetByIdentifier(byte identifier)
+        {
+            _ = AllAlgorithmsDictionary.TryGetValue(identifier, out PivAlgorithm2 result);
+            return result;
+        }
+
+        public static TResult? GetAlgorithmByBlockSize<TResult>(
+            int blockSizeInBits,
+            Func<PivAlgorithm2, bool>? selector = null)
+            where TResult : PivAlgorithm2
+        {
+            Type type = typeof(TResult);
+
+            return type switch
+            {
+                _ when type == typeof(RsaAlgorithm) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(RsaAlgorithm)),
+                _ when type == typeof(EccAlgorithm) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(EccAlgorithm)),
+                _ when type == typeof(SymmetricAlgorithm) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(SymmetricAlgorithm)),
+                _ when type == typeof(Ed25519Algorithm) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(Ed25519Algorithm)),
+                _ when type == typeof(X25519Algorithm) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(X25519Algorithm)),
+                _ when type == typeof(PivAlgorithm2) =>
+                    FilterAlgorithm<TResult>(blockSizeInBits, selector, typeof(PivAlgorithm2)),
+                _ => throw new ArgumentException($"Unsupported algorithm type: {type.Name}")
+            };
+        }
+
+        private static T? FilterAlgorithm<T>(int blockSizeInBits, Func<PivAlgorithm2, bool>? selector, Type sourceType)
+            where T : PivAlgorithm2 =>
+            AllAlgorithms
+                .Where(sourceType.IsInstanceOfType)
+                .WhereIfNotNull(selector)
+                .FirstOrDefault(pa => pa.KeySizeBits == blockSizeInBits) as T;
+
+        private static IEnumerable<T> WhereIfNotNull<T>(
+            this IEnumerable<T> query,
+            Func<T, bool>? selector) =>
+            selector != null
+                ? query.Where(selector)
+                : query;
     }
 
     public static class AsymmetricKeySizeHelper
     {
-        public static PivAlgorithm2 DetermineFromPrivateKey(ReadOnlySpan<byte> privateKey) =>
-            privateKey.Length switch
+        public static PivAlgorithm2 DetermineFromPrivateKey(ReadOnlySpan<byte> privateKey)
+        {
+            int keySizeInBytes = privateKey.Length;
+            return keySizeInBytes switch
             {
                 32 => PivAlgorithms.EccP256,
                 48 => PivAlgorithms.EccP384,
@@ -182,40 +252,55 @@ namespace Yubico.YubiKey.Piv
                         CultureInfo.CurrentCulture,
                         ExceptionMessages.InvalidPrivateKeyData))
             };
+        }
 
-        public static PivAlgorithm2 DetermineFromPublicKey(ReadOnlySpan<byte> publicKey) =>
-            publicKey.Length switch
+        public static PivAlgorithm2 DetermineFromPublicKey(ReadOnlySpan<byte> publicKey)
+        {
+            int keySizeInBytes = publicKey.Length;
+            return keySizeInBytes switch
             {
                 // For ECC keys, the length of the public key size is: prefix+x+y,
                 // E.g: EccP256: 1+32+32 = 65
                 //      EccP256: 1+48+48 = 97
                 65 => PivAlgorithms.EccP256,
                 97 => PivAlgorithms.EccP384,
-                _ => DetermineFromModulus(publicKey)
-            };
-
-        private static PivAlgorithm2 DetermineFromModulus(ReadOnlySpan<byte> modulus)
-        {
-            int keySize = modulus.Length * 8;
-            return keySize switch
-            {
-                1024 => PivAlgorithms.Rsa1024,
-                2048 => PivAlgorithms.Rsa2048,
-                3072 => PivAlgorithms.Rsa3072,
-                4096 => PivAlgorithms.Rsa4096,
+                128 => PivAlgorithms.Rsa1024,
+                256 => PivAlgorithms.Rsa2048,
+                384 => PivAlgorithms.Rsa3072,
+                512 => PivAlgorithms.Rsa4096,
                 _ => throw new ArgumentException(
                     string.Format(
                         CultureInfo.CurrentCulture,
                         ExceptionMessages.InvalidPublicKeyData))
             };
         }
-    }
 
-    public enum PivAlgorithmType
-    {
-        Rsa,
-        Ecc,
-        Aes,
-        TripleDes
+        public static bool TryDetermineFromPublicKey(ReadOnlySpan<byte> publicKey, out PivAlgorithm2 result)
+        {
+            try
+            {
+                result = DetermineFromPublicKey(publicKey);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                result = null!;
+                return false;
+            }
+        }
+
+        public static bool TryDetermineFromPrivateKey(ReadOnlySpan<byte> privateKey, out PivAlgorithm2 result)
+        {
+            try
+            {
+                result = DetermineFromPrivateKey(privateKey);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                result = null!;
+                return false;
+            }
+        }
     }
 }

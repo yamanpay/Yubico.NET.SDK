@@ -90,13 +90,6 @@ namespace Yubico.YubiKey.Piv.Commands
     {
         private const byte DigestTag = 0x81;
 
-        private const int Rsa1024DigestDataLength = 128;
-        private const int Rsa2048DigestDataLength = 256;
-        private const int Rsa3072DigestDataLength = 384;
-        private const int Rsa4096DigestDataLength = 512;
-        private const int EccP256DigestDataLength = 32;
-        private const int EccP384DigestDataLength = 48;
-
         // The default constructor explicitly defined. We don't want it to be
         // used.
         private AuthenticateSignCommand()
@@ -165,24 +158,16 @@ namespace Yubico.YubiKey.Piv.Commands
             Data = digestData;
             SlotNumber = slotNumber;
 
-            // Determine the algorithm based on the length of the digest data.
-            // Currently, the length of the data must be 128 (RSA-1024), 256
-            // (RSA-2048), 384 (RSA-3072), 512 (RSA-4096), 32 (ECC-P256), or 48 (ECC-P384).
-            // Return the PivAlgorithm, or if the length is not supported, throw an
-            // exception.
-            Algorithm = digestData.Length switch
-            {
-                Rsa1024DigestDataLength => PivAlgorithm.Rsa1024,
-                Rsa2048DigestDataLength => PivAlgorithm.Rsa2048,
-                Rsa3072DigestDataLength => PivAlgorithm.Rsa3072,
-                Rsa4096DigestDataLength => PivAlgorithm.Rsa4096,
-                EccP256DigestDataLength => PivAlgorithm.EccP256,
-                EccP384DigestDataLength => PivAlgorithm.EccP384,
-                _ => throw new ArgumentException(
+            int blockSizeInBits = digestData.Length * 8;
+
+            PivAlgorithm2 algorithm =
+                PivAlgorithms.GetAlgorithmByBlockSize<PivAlgorithm2>(blockSizeInBits, a => a.IsAsymmetric) ??
+                throw new ArgumentException(
                     string.Format(
                         CultureInfo.CurrentCulture,
-                        ExceptionMessages.IncorrectDigestLength)),
-            };
+                        ExceptionMessages.IncorrectCiphertextLength));
+
+            AlgorithmIdentifier = algorithm.Identifier;
         }
 
         /// <inheritdoc />

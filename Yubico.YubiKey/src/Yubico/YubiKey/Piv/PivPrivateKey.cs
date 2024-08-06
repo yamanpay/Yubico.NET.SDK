@@ -75,7 +75,10 @@ namespace Yubico.YubiKey.Piv
         /// <value>
         /// RSA or ECC.
         /// </value>
-        public PivAlgorithm Algorithm { get; protected set; }
+        public PivAlgorithm Algorithm => (PivAlgorithm)AlgorithmIdentifier;
+
+        //TODO Handle - keep algorithmIdentifier or not?
+        public byte AlgorithmIdentifier { get; protected set; }
 
         protected Memory<byte> EncodedKey { get; set; }
 

@@ -22,6 +22,30 @@ namespace Yubico.YubiKey.Piv.Commands
 {
     public class KeyAgreeCommandTests
     {
+        [Fact]
+        public void Constructor_SetsCorrect_AlgorithmIdentifier()
+        {
+            var pubKey1 = GetPublicKey(PivAlgorithm.EccP256);
+            var command1 = new AuthenticateKeyAgreeCommand(pubKey1, 0x9A);
+            Assert.Equal(0x11, (int)command1.Algorithm);
+            Assert.Equal(0x11, command1.AlgorithmIdentifier);
+
+            var pubKey2 = GetPublicKey(PivAlgorithm.EccP384);
+            var command2 = new AuthenticateKeyAgreeCommand(pubKey2, 0x9A);
+            Assert.Equal(0x14, (int)command2.Algorithm);
+            Assert.Equal(0x14, command2.AlgorithmIdentifier);
+        }
+
+        [Fact]
+        public void Constructor_WithInvalidPublicKey_ThrowsException()
+        {
+            var pubKey1 = new byte[100]; // Invalid size
+            Assert.Throws<ArgumentException>(() =>
+            {
+                _ = new AuthenticateKeyAgreeCommand(pubKey1, 0x9A);
+            });
+        }
+        
         [Theory]
         [InlineData(PivAlgorithm.Rsa1024)]
         [InlineData(PivAlgorithm.Rsa2048)]

@@ -76,7 +76,9 @@ namespace Yubico.YubiKey.Piv
         /// <value>
         /// RSA or ECC.
         /// </value>
-        public PivAlgorithm Algorithm { get; protected set; }
+        public PivAlgorithm Algorithm => (PivAlgorithm)AlgorithmIdentifier;
+        //TODO Handle - keep algorithmIdentifier or not?
+        public byte AlgorithmIdentifier { get; protected set; }
 
         protected Memory<byte> PivEncodedKey { get; set; }
         protected Memory<byte> YubiKeyEncodedKey { get; set; }
@@ -126,7 +128,6 @@ namespace Yubico.YubiKey.Piv
             // Try to decode as an RSA public key. If that works, we're done. If
             // not, try ECC. If that doesn't work, exception.
             bool isCreated = PivRsaPublicKey.TryCreate(out PivPublicKey publicKeyObject, encodedPublicKey);
-
             if (isCreated == false)
             {
                 if (PivEccPublicKey.TryCreate(out publicKeyObject, encodedPublicKey) == false)

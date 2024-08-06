@@ -88,9 +88,6 @@ namespace Yubico.YubiKey.Piv.Commands
     {
         private const int KeyAgreeTag = 0x85;
 
-        private const int EccP256PublicKeySize = 65;
-        private const int EccP384PublicKeySize = 97;
-
         // The default constructor explicitly defined. We don't want it to be
         // used.
         private AuthenticateKeyAgreeCommand()
@@ -130,15 +127,8 @@ namespace Yubico.YubiKey.Piv.Commands
             Data = correspondentPublicKey;
             SlotNumber = slotNumber;
 
-            Algorithm = correspondentPublicKey.Length switch
-            {
-                EccP256PublicKeySize => PivAlgorithm.EccP256,
-                EccP384PublicKeySize => PivAlgorithm.EccP384,
-                _ => throw new ArgumentException(
-                    string.Format(
-                        CultureInfo.CurrentCulture,
-                        ExceptionMessages.IncorrectEccKeyLength)),
-            };
+            AlgorithmIdentifier =
+                AsymmetricKeySizeHelper.DetermineFromPublicKey(correspondentPublicKey.Span).Identifier;
         }
 
         /// <inheritdoc />

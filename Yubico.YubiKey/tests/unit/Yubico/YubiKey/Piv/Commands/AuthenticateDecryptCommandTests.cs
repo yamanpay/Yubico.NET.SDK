@@ -14,19 +14,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Xunit;
 using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Piv.Commands
 {
-    public class DecryptCommandTests
+    public class AuthenticateDecryptCommandTests
     {
+
         [Theory]
         [InlineData(PivAlgorithm.Rsa1024)]
+        [InlineData(PivAlgorithm.Rsa2048)]       
         [InlineData(PivAlgorithm.Rsa3072)]
         [InlineData(PivAlgorithm.Rsa4096)]
-        [InlineData(PivAlgorithm.Rsa2048)]
         public void ClassType_DerivedFromPivCommand_IsTrue(PivAlgorithm algorithm)
         {
             byte[] dataToDecrypt = PivCommandResponseTestData.GetEncryptedBlock(algorithm);
@@ -99,6 +99,18 @@ namespace Yubico.YubiKey.Piv.Commands
             byte getSlotNum = command.SlotNumber;
 
             Assert.Equal(slotNumber, getSlotNum);
+        }
+
+        [Theory]
+        [InlineData(PivAlgorithm.Rsa1024)]
+        [InlineData(PivAlgorithm.Rsa2048)]
+        [InlineData(PivAlgorithm.Rsa3072)]
+        [InlineData(PivAlgorithm.Rsa4096)]
+        public void Constructor_Sets_Correct_AlgorithmIdentifier(PivAlgorithm expectedAlgorithm)
+        {
+            var dataToDecrypt = PivCommandResponseTestData.GetEncryptedBlock(expectedAlgorithm);
+            var command = new AuthenticateDecryptCommand(dataToDecrypt, 0x90);
+            Assert.Equal((int)expectedAlgorithm, command.AlgorithmIdentifier);
         }
 
         [Theory]

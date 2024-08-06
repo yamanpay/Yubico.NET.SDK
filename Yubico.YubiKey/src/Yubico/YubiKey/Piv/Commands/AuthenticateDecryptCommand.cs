@@ -84,19 +84,14 @@ namespace Yubico.YubiKey.Piv.Commands
     public sealed class AuthenticateDecryptCommand : AuthenticateCommand, IYubiKeyCommand<AuthenticateDecryptResponse>
     {
         private const int DataToDecryptTag = 0x81;
-
-        private const int Rsa1024BlockSize = 128;
-        private const int Rsa2048BlockSize = 256;
-        private const int Rsa3072BlockSize = 384;
-        private const int Rsa4096BlockSize = 512;
-
+        
         // The default constructor explicitly defined. We don't want it to be
         // used.
         private AuthenticateDecryptCommand()
         {
             throw new NotImplementedException();
         }
-
+        
         /// <summary>
         /// Initializes a new instance of the AuthenticateDecryptCommand class.
         /// This command takes the slot number and the data to decrypt.
@@ -128,17 +123,14 @@ namespace Yubico.YubiKey.Piv.Commands
             Data = dataToDecrypt;
             SlotNumber = slotNumber;
 
-            Algorithm = dataToDecrypt.Length switch
-            {
-                Rsa1024BlockSize => PivAlgorithm.Rsa1024,
-                Rsa2048BlockSize => PivAlgorithm.Rsa2048,
-                Rsa3072BlockSize => PivAlgorithm.Rsa3072,
-                Rsa4096BlockSize => PivAlgorithm.Rsa4096,
-                _ => throw new ArgumentException(
+            int blockSizeInBits = dataToDecrypt.Length * 8;
+            RsaAlgorithm algorithm = PivAlgorithms.GetAlgorithmByBlockSize<RsaAlgorithm>(blockSizeInBits) ??
+                throw new ArgumentException(
                     string.Format(
                         CultureInfo.CurrentCulture,
-                        ExceptionMessages.IncorrectCiphertextLength)),
-            };
+                        ExceptionMessages.IncorrectCiphertextLength));
+
+            AlgorithmIdentifier = algorithm.Identifier;
         }
 
         /// <inheritdoc />
