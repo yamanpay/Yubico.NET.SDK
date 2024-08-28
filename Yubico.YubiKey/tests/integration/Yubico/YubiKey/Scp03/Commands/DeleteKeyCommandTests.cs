@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using Xunit;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.TestUtilities;
 
 namespace Yubico.YubiKey.Scp03.Commands
@@ -23,6 +25,7 @@ namespace Yubico.YubiKey.Scp03.Commands
         [SkippableTheory(typeof(DeviceNotFoundException))]
         [InlineData(StandardTestDevice.Fw5Fips)]
         [InlineData(StandardTestDevice.Fw5)]
+        [Obsolete("Obsolete")]
         public void DeleteKey_One_Succeeds(StandardTestDevice testDeviceType)
         {
             byte[] key1 = {
@@ -40,16 +43,39 @@ namespace Yubico.YubiKey.Scp03.Commands
             };
 
             IYubiKeyDevice testDevice = IntegrationTestDeviceEnumeration.GetTestDevice(testDeviceType);
-//TODO 
-#pragma warning disable CS0618 // Type or member is obsolete
             var isValid = testDevice.TryConnectScp03(YubiKeyApplication.Scp03, currentKeys, out IScp03YubiKeyConnection? connection);
-#pragma warning restore CS0618 // Type or member is obsolete
-
             Assert.True(isValid);
             Assert.NotNull(connection);
 
             var cmd = new DeleteKeyCommand(1, false);
             Scp03Response rsp = connection!.SendCommand(cmd);
+            Assert.Equal(ResponseStatus.Success, rsp.Status);
+        }
+        
+        [SkippableTheory(typeof(DeviceNotFoundException))]
+        [InlineData(StandardTestDevice.Fw5Fips)]
+        [InlineData(StandardTestDevice.Fw5)]
+        public void DeleteKey_One_Succeeds2(StandardTestDevice testDeviceType)
+        {
+            byte[] key1 = {
+                0x33, 0xff, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xdd,
+            };
+            byte[] key2 = {
+                0x33, 0xee, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xff,
+            };
+            byte[] key3 = {
+                0x33, 0xdd, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xee, 0xff, 0x11,
+            };
+
+            var currentKeys = new Scp03KeyParameters(ScpKid.Scp03, 3, new StaticKeys(key1, key2, key3));
+            var testDevice = IntegrationTestDeviceEnumeration.GetTestDevice(testDeviceType);
+            var isValid = testDevice.TryConnectScp(YubiKeyApplication.Scp03, currentKeys, out var connection);
+            
+            Assert.True(isValid);
+            Assert.NotNull(connection);
+
+            var cmd = new DeleteKeyCommand(1, false);
+            var rsp = connection!.SendCommand(cmd);
             Assert.Equal(ResponseStatus.Success, rsp.Status);
         }
 

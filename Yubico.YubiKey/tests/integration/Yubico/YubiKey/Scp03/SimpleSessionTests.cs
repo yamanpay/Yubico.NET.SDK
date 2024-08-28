@@ -125,8 +125,7 @@ namespace Yubico.YubiKey.Scp03
         public void TryConnectScp_AlgorithmId_Succeeds()
         {
             var device = IntegrationTestDeviceEnumeration.GetTestDevice(Transport.SmartCard, FirmwareVersion.V5_3_0);
-            
-            var isValid = device.TryConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, false, out var connection);
+            var isValid = device.TryConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
             using (connection)
             {
                 Assert.True(isValid);

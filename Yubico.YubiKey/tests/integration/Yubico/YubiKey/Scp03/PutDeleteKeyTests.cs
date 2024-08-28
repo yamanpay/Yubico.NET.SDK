@@ -32,11 +32,8 @@ namespace Yubico.YubiKey.Scp03
             IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(
                 Transport.SmartCard,
                 minimumFirmwareVersion: FirmwareVersion.V5_3_0);
-            //TODO 
 
-#pragma warning disable CS0618 // Type or member is obsolete
             using (var scp03Session = new Scp03Session(device, staticKeys))
-#pragma warning restore CS0618 // Type or member is obsolete
             {
                 using StaticKeys newKeys = GetKeySet(1);
                 scp03Session.PutKeySet(newKeys);
@@ -46,11 +43,7 @@ namespace Yubico.YubiKey.Scp03
             }
 
             using StaticKeys keySet2 = GetKeySet(2);
-            //TODO 
-
-#pragma warning disable CS0618 // Type or member is obsolete
             using (var scp03Session = new Scp03Session(device, keySet2))
-#pragma warning restore CS0618 // Type or member is obsolete
             {
                 using StaticKeys keySet3 = GetKeySet(3);
                 scp03Session.PutKeySet(keySet3);
@@ -67,7 +60,6 @@ namespace Yubico.YubiKey.Scp03
                 Transport.SmartCard,
                 FirmwareVersion.V5_3_0);
 
-            //TODO 
             using (var scp03Session = new Scp03Session(device, staticKeys))
             {
                 using StaticKeys newKeys = GetKeySet(1);
@@ -87,9 +79,7 @@ namespace Yubico.YubiKey.Scp03
                 FirmwareVersion.V5_3_0);
             //TODO 
 
-#pragma warning disable CS0618 // Type or member is obsolete
             using var scp03Session = new Scp03Session(device, staticKeys);
-#pragma warning restore CS0618 // Type or member is obsolete
             scp03Session.DeleteKeySet(1);
             scp03Session.DeleteKeySet(2);
 
