@@ -94,8 +94,5 @@ namespace Yubico.YubiKey
 
             base.Dispose(disposing);
         }
-
-        [Obsolete("Use new Scp")]
-        public ScpKeyParameters KeyParameters => throw new NotImplementedException(); //TODO not needed?
     }
 }

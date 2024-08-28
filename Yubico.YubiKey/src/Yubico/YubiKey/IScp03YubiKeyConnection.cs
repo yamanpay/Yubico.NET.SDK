@@ -23,7 +23,7 @@ namespace Yubico.YubiKey
     /// only <see cref="IYubiKeyConnection"/>, but this interface as well.
     /// </summary>
     [Obsolete("Use new scp")]
-    public interface IScp03YubiKeyConnection : IScpYubiKeyConnection
+    public interface IScp03YubiKeyConnection : IYubiKeyConnection
     {
         /// <summary>
         /// Return a reference to the SCP03 key set used to make the connection.

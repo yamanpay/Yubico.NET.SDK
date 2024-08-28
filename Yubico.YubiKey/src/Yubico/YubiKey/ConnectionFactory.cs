@@ -122,18 +122,18 @@ namespace Yubico.YubiKey
                 : TimeSpan.FromSeconds(3.01);
 
             // We're only affected by the reclaim timeout if we're switching USB transports.
-            if (_device._lastActiveTransport == newTransport)
+            if (_device.LastActiveTransport == newTransport)
             {
                 _log.LogInformation(
                     "{Transport} transport is already active. No need to wait for reclaim.",
-                    _device._lastActiveTransport);
+                    _device.LastActiveTransport);
 
                 return;
             }
 
             _log.LogInformation(
                 "Switching USB transports from {OldTransport} to {NewTransport}.",
-                _device._lastActiveTransport,
+                _device.LastActiveTransport,
                 newTransport);
 
             var timeSinceLastActivation = DateTime.Now - GetLastActiveTime();
@@ -151,7 +151,7 @@ namespace Yubico.YubiKey
                 Thread.Sleep(waitNeeded);
             }
 
-            _device._lastActiveTransport = newTransport;
+            _device.LastActiveTransport = newTransport;
 
             _log.LogInformation("Reclaim timeout has lapsed. It is safe to switch USB transports.");
         }
@@ -168,7 +168,7 @@ namespace Yubico.YubiKey
         }
 
         private DateTime GetLastActiveTime() =>
-            _device._lastActiveTransport switch
+            _device.LastActiveTransport switch
             {
                 Transport.SmartCard when _smartCardDevice is { } => _smartCardDevice.LastAccessed,
                 Transport.HidFido when _hidFidoDevice is { } => _hidFidoDevice.LastAccessed,
