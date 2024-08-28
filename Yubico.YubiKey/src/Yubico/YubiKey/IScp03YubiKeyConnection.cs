@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
@@ -22,7 +23,7 @@ namespace Yubico.YubiKey
     /// only <see cref="IYubiKeyConnection"/>, but this interface as well.
     /// </summary>
     [Obsolete("Use new scp")]
-    public interface IScp03YubiKeyConnection : IYubiKeyConnection
+    public interface IScp03YubiKeyConnection : IScpYubiKeyConnection
     {
         /// <summary>
         /// Return a reference to the SCP03 key set used to make the connection.

@@ -248,42 +248,38 @@ namespace Yubico.YubiKey
 
         /// <inheritdoc />
         [Obsolete("Use new Scp")]
-        public IScp03YubiKeyConnection ConnectScp03(YubiKeyApplication yubikeyApplication, StaticKeys scp03Keys)
-        {
-            #pragma warning disable CA1062
-            _ = TryConnectScp03_Private(yubikeyApplication, scp03Keys, true, out var returnValue);
-            #pragma warning restore CA1062
-            return returnValue!;
-        }
+        public IScp03YubiKeyConnection ConnectScp03(YubiKeyApplication yubikeyApplication, StaticKeys scp03Keys) 
+            => (IScp03YubiKeyConnection)Connect(yubikeyApplication, scp03Keys);
 
         /// <inheritdoc />
         [Obsolete("Use new Scp")]
         public IScp03YubiKeyConnection ConnectScp03(byte[] applicationId, StaticKeys scp03Keys)
         {
-            #pragma warning disable CA1062
-            _ = TryConnectScp03_Private(
-                YubiKeyApplicationExtensions.GetById(applicationId), scp03Keys, true, out var returnValue);
-            #pragma warning restore CA1062
-            return returnValue!;
+            var yubikeyApplication = YubiKeyApplicationExtensions.GetById(applicationId);
+            return (IScp03YubiKeyConnection)Connect(yubikeyApplication, scp03Keys);
         }
 
-        public IScpYubiKeyConnection ConnectScp(byte[] applicationId, ScpKeyParameters scp03Keys)
+        //TODO Decide if to keep or not
+        public IScpYubiKeyConnection ConnectScp(byte[] applicationId, ScpKeyParameters keyParameters)
         {
-            _ = TryConnectScp(YubiKeyApplicationExtensions.GetById(applicationId), scp03Keys, true, out var connection);
-
-            return connection!;
+            var yubiKeyApplication = YubiKeyApplicationExtensions.GetById(applicationId);
+            return (IScpYubiKeyConnection)Connect(yubiKeyApplication, keyParameters); //Todo safe?
         }
 
         [Obsolete("Use new Scp")]
-        internal virtual IYubiKeyConnection? Connect_Legacy(
+        internal virtual IYubiKeyConnection? Connect(
             YubiKeyApplication? application,
             byte[]? applicationId,
             StaticKeys scp03Keys) // TODO Test that this works
         {
             application ??= YubiKeyApplicationExtensions.GetById(applicationId);
-            return Connect((YubiKeyApplication)application, new Scp03KeyParameters(ScpKid.Scp03, scp03Keys.KeyVersionNumber, scp03Keys));
+            return Connect((YubiKeyApplication)application, scp03Keys);
         }
         
+        [Obsolete("Obsolete")]
+        public virtual IYubiKeyConnection Connect(YubiKeyApplication yubikeyApplication, StaticKeys scp03Keys) 
+            => _connectionFactory.CreateScpConnection(yubikeyApplication, scp03Keys);
+
         /// <inheritdoc />
         public virtual IYubiKeyConnection Connect(YubiKeyApplication yubikeyApplication) 
             => _connectionFactory.CreateNonScpConnection(yubikeyApplication);
@@ -720,10 +716,8 @@ namespace Yubico.YubiKey
             bool throwOnFail,
             [MaybeNullWhen(returnValue: false)] out IScp03YubiKeyConnection connection)
         {
-            var attemptedConnection = Connect(
-                application, new Scp03KeyParameters(0x01, scp03Keys.KeyVersionNumber, scp03Keys)); //TODO Use constant 0x01
-
-            if (attemptedConnection is IScp03YubiKeyConnection scp03Connection) // fails because it is now an ScpCOnnection
+            var attemptedConnection = Connect(application, scp03Keys);
+            if (attemptedConnection is IScp03YubiKeyConnection scp03Connection) 
             {
                 connection = scp03Connection;
                 return true;

@@ -16,6 +16,7 @@ using System;
 using System.Linq;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.YubiKey.Pipelines;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
@@ -93,5 +94,8 @@ namespace Yubico.YubiKey
 
             base.Dispose(disposing);
         }
+
+        [Obsolete("Use new Scp")]
+        public ScpKeyParameters KeyParameters => throw new NotImplementedException(); //TODO not needed?
     }
 }

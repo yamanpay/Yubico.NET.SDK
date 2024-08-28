@@ -34,7 +34,7 @@ namespace Yubico.YubiKey
         }
 
         [Obsolete("Obsolete")]
-        internal override IYubiKeyConnection? Connect_Legacy(
+        internal override IYubiKeyConnection? Connect(
             YubiKeyApplication? application,
             byte[]? applicationId,
             StaticKeys? scp03Keys)

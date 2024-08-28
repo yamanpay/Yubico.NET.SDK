@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Yubico.Core.Devices.Hid;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.YubiKey.Scp;
+using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
 {
@@ -44,6 +45,22 @@ namespace Yubico.YubiKey
             _hidFidoDevice = hidFidoDevice;
         }
 
+        [Obsolete("Obsolete")]
+        public IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, StaticKeys scp03Keys)
+        {
+
+            if (_smartCardDevice is null)
+            {
+                _log.LogError("No smart card interface present. Unable to establish SCP connection to YubiKey.");
+                throw new InvalidOperationException("TODO");
+            }
+
+            _log.LogInformation("Connecting via the SmartCard interface using SCP03.");
+            WaitForReclaimTimeout(Transport.SmartCard);
+
+            return new Scp03Connection(_smartCardDevice, application, scp03Keys);
+        }
+        
         public IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, ScpKeyParameters keyParameters)
         {
             LogConnectionAttempt(application, keyParameters); // No need
