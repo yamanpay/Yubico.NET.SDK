@@ -1,4 +1,4 @@
-﻿// Copyright 2023 Yubico AB
+﻿// Copyright 2021 Yubico AB
 //
 // Licensed under the Apache License, Version 2.0 (the "License").
 // You may not use this file except in compliance with the License.
@@ -13,20 +13,24 @@
 // limitations under the License.
 
 using System;
-using Yubico.YubiKey.Scp03;
+using Yubico.Core.Iso7816;
 
-namespace Yubico.YubiKey
+namespace Yubico.YubiKey.Scp.Commands
 {
     /// <summary>
-    /// The connection class that can perform SCP03 operations will implement not
-    /// only <see cref="IYubiKeyConnection"/>, but this interface as well.
+    /// The response to putting or replacing SCP03 keys on the YubiKey.
     /// </summary>
-    [Obsolete("Use new scp")]
-    public interface IScp03YubiKeyConnection : IYubiKeyConnection
+    internal class PutKeyResponse : Scp03Response, IYubiKeyResponseWithData<ReadOnlyMemory<byte>>
     {
-        /// <summary>
-        /// Return a reference to the SCP03 key set used to make the connection.
-        /// </summary>
-        public StaticKeys GetScp03Keys();
+        private readonly byte[] _checksum;
+
+        public PutKeyResponse(ResponseApdu responseApdu)
+            : base(responseApdu)
+        {
+            _checksum = new byte[responseApdu.Data.Length];
+            responseApdu.Data.CopyTo(_checksum);
+        }
+
+        public ReadOnlyMemory<byte> GetData() => _checksum;
     }
 }

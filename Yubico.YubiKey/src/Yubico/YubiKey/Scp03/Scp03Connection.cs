@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Linq;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.YubiKey.Pipelines;
@@ -19,6 +20,7 @@ using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
 {
+    [Obsolete("Obsolete")]
     internal class Scp03Connection : SmartCardConnection, IScp03YubiKeyConnection
     {
         private bool _disposed;

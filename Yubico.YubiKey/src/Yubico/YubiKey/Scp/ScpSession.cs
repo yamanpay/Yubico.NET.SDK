@@ -1,4 +1,4 @@
-// Copyright 2023 Yubico AB
+﻿// Copyright 2023 Yubico AB
 //
 // Licensed under the Apache License, Version 2.0 (the "License").
 // You may not use this file except in compliance with the License.
@@ -17,25 +17,25 @@ using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Yubico.Core.Logging;
-using Yubico.YubiKey.Scp03.Commands;
+using Yubico.YubiKey.Scp.Commands;
 
-namespace Yubico.YubiKey.Scp03
+namespace Yubico.YubiKey.Scp
 {
     /// <summary>
-    /// Create a session for managing the SCP03 configuration of a YubiKey.
+    /// Create a session for managing the SCP configuration of a YubiKey.
     /// </summary>
     /// <remarks>
-    /// See the <xref href="UsersManualScp03">User's Manual entry</xref> on SCP03.
+    /// See the <xref href="UsersManualScp">User's Manual entry</xref> on SCP.
     /// <para>
-    /// Usually, you use SCP03 "in the background" to secure the communication
+    /// Usually, you use SCP "in the background" to secure the communication
     /// with another application. For example, when you want to perform PIV
     /// operations, but need to send the commands to and get the responses from
     /// the YubiKey securely (such as sending commands remotely where
-    /// authenticity and confidentiality are required), you use SCP03.
+    /// authenticity and confidentiality are required), you use SCP.
     /// <code language="csharp">
     ///   if (YubiKeyDevice.TryGetYubiKey(serialNumber, out IYubiKeyDevice yubiKeyDevice))
     ///   {
-    ///       using (var pivSession = new PivSession(scp03Device, scp03Keys))
+    ///       using (var pivSession = new PivSession(scpDevice, scpKeys))
     ///       {
     ///         . . .
     ///       }
@@ -43,33 +43,33 @@ namespace Yubico.YubiKey.Scp03
     /// </code>
     /// </para>
     /// <para>
-    /// However, there are times you need to manage the configuration of SCP03
+    /// However, there are times you need to manage the configuration of SCP
     /// directly, not as simply the security layer for a PIV or other
-    /// applications. The most common operations are loading and deleting SCP03
+    /// applications. The most common operations are loading and deleting SCP
     /// key sets on the YubiKey.
     /// </para>
     /// <para>
-    /// For the SCP03 configuration management operations, use the
-    /// <c>Scp03Session</c> class.
+    /// For the SCP configuration management operations, use the
+    /// <c>ScpSession</c> class.
     /// </para>
     /// <para>
     /// Once you have the YubiKey to use, you will build an instance of this
-    /// <c>Scp03Session</c> class to represent the SCP03 on the hardware.
+    /// <c>ScpSession</c> class to represent the SCP on the hardware.
     /// Because this class implements <c>IDisposable</c>, use the <c>using</c>
     /// keyword. For example,
     /// <code language="csharp">
     ///   if (YubiKeyDevice.TryGetYubiKey(serialNumber, out IYubiKeyDevice yubiKeyDevice))
     ///   {
-    ///       var scp03Keys = new StaticKeys();
-    ///       using (var scp03 = new Scp03Session(yubiKeyDevice, scp03Keys))
+    ///       var scpKeys = new StaticKeys();
+    ///       using (var scp = new ScpSession(yubiKeyDevice, scpKeys))
     ///       {
-    ///           // Perform SCP03 operations.
+    ///           // Perform SCP operations.
     ///       }
     ///   }
     /// </code>
     /// </para>
     /// <para>
-    /// If the YubiKey does not support SCP03, the constructor will throw an
+    /// If the YubiKey does not support SCP, the constructor will throw an
     /// exception.
     /// </para>
     /// <para>
@@ -77,32 +77,31 @@ namespace Yubico.YubiKey.Scp03
     /// exception.
     /// </para>
     /// </remarks>
-    public sealed class Scp03Session : IDisposable
+    public sealed class ScpSession : IDisposable
     {
         private bool _disposed;
-        private readonly ILogger _log = Log.GetLogger<Scp03Session>();
+        private readonly ILogger _log = Log.GetLogger<ScpSession>();
 
         /// <summary>
         /// The object that represents the connection to the YubiKey. Most
         /// applications will ignore this, but it can be used to call Commands
         /// directly.
         /// </summary>
-        [Obsolete("Obsolete")]
-        public IScp03YubiKeyConnection Connection { get; private set; }
+        public IScpYubiKeyConnection Connection { get; private set; }
 
         // The default constructor explicitly defined. We don't want it to be
         // used.
-        private Scp03Session()
+        private ScpSession()
         {
             throw new NotImplementedException();
         }
 
         /// <summary>
-        /// Create an instance of <see cref="Scp03Session"/>, the object that
-        /// represents SCP03 on the YubiKey.
+        /// Create an instance of <see cref="ScpSession"/>, the object that
+        /// represents SCP on the YubiKey.
         /// </summary>
         /// <remarks>
-        /// See the <xref href="UsersManualScp03">User's Manual entry</xref> on SCP03.
+        /// See the <xref href="UsersManualScp">User's Manual entry</xref> on SCP.
         /// <para>
         /// Because this class implements <c>IDisposable</c>, use the <c>using</c>
         /// keyword. For example,
@@ -110,11 +109,11 @@ namespace Yubico.YubiKey.Scp03
         ///   if (YubiKeyDevice.TryGetYubiKey(serialNumber, out IYubiKeyDevice yubiKeyDevice))
         ///   {
         ///       var staticKeys = new StaticKeys();
-        ///       // Note that you do not need to call the "WithScp03" method when
-        ///       // using the Scp03Session class.
-        ///       using (var scp03 = new Scp03Session(yubiKeyDevice, staticKeys))
+        ///       // Note that you do not need to call the "WithScp" method when
+        ///       // using the ScpSession class.
+        ///       using (var scp = new ScpSession(yubiKeyDevice, staticKeys))
         ///       {
-        ///           // Perform SCP03 operations.
+        ///           // Perform SCP operations.
         ///       }
         ///   }
         /// </code>
@@ -124,39 +123,37 @@ namespace Yubico.YubiKey.Scp03
         /// The object that represents the actual YubiKey which will perform the
         /// operations.
         /// </param>
-        /// <param name="scp03Keys">
+        /// <param name="scpKeys">
         /// The shared secret keys that will be used to authenticate the caller
         /// and encrypt the communications. This constructor will make a deep
         /// copy of the keys, it will not copy a reference to the object.
         /// </param>
         /// <exception cref="ArgumentNullException">
-        /// The <c>yubiKey</c> or <c>scp03Keys</c> argument is null.
+        /// The <c>yubiKey</c> or <c>scpKeys</c> argument is null.
         /// </exception>
-        [Obsolete("Use new Scp")]
-        public Scp03Session(IYubiKeyDevice yubiKey, StaticKeys scp03Keys)
+        public ScpSession(IYubiKeyDevice yubiKey, ScpKeyParameters scpKeys)
         {
-            _log.LogInformation("Create a new instance of Scp03Session.");
+            _log.LogInformation("Create a new instance of ScpSession.");
             if (yubiKey is null)
             {
                 throw new ArgumentNullException(nameof(yubiKey));
             }
-            if (scp03Keys is null)
+            if (scpKeys is null)
             {
-                throw new ArgumentNullException(nameof(scp03Keys));
+                throw new ArgumentNullException(nameof(scpKeys));
             }
 
-            Connection = yubiKey.ConnectScp03(YubiKeyApplication.Scp03.GetIso7816ApplicationId(), scp03Keys);
-            _disposed = false;
+            Connection = yubiKey.ConnectScp(YubiKeyApplication.Scp03, scpKeys);
         }
 
         /// <summary>
         /// Put the given key set onto the YubiKey.
         /// </summary>
         /// <remarks>
-        /// See the <xref href="UsersManualScp03">User's Manual entry</xref> on
-        /// SCP03.
+        /// See the <xref href="UsersManualScp">User's Manual entry</xref> on
+        /// SCP.
         /// <para>
-        /// On each YubiKey that supports SCP03, there is space for three sets of
+        /// On each YubiKey that supports SCP, there is space for three sets of
         /// keys. Each set contains three keys: "ENC", "MAC", and "DEK" (Channel
         /// Encryption, Channel MAC, and Data Encryption).
         /// <code language="adoc">
@@ -215,7 +212,7 @@ namespace Yubico.YubiKey.Scp03
         /// </para>
         /// <para>
         /// In order to add or change any key set, you must supply one of the existing
-        /// key sets in order to build the SCP03 command and to encrypt and
+        /// key sets in order to build the SCP command and to encrypt and
         /// authenticate the new keys. When replacing the initial, default keys, you
         /// only have the choice to supply the keys with the KVN of 0xFF.
         /// </para>
@@ -233,7 +230,7 @@ namespace Yubico.YubiKey.Scp03
         /// to replace itself.
         /// </para>
         /// </remarks>
-        /// <param name="newKeySet">
+        /// <param name="keyParameters">
         /// The keys and KeyVersion Number of the set that will be loaded onto
         /// the YubiKey.
         /// </param>
@@ -244,17 +241,16 @@ namespace Yubico.YubiKey.Scp03
         /// The new key set's checksum failed to verify, or some other error
         /// described in the exception message.
         /// </exception>
-        [Obsolete("Obsolete")]
-        public void PutKeySet(StaticKeys newKeySet)
+        public void PutKeySet(ScpKeyParameters keyParameters)
         {
-            _log.LogInformation("Put a new SCP03 key set onto a YubiKey.");
+            _log.LogInformation("Put a new SCP key set onto a YubiKey.");
 
-            if (newKeySet is null)
+            if (keyParameters is null)
             {
-                throw new ArgumentNullException(nameof(newKeySet));
+                throw new ArgumentNullException(nameof(keyParameters));
             }
             
-            var command = new PutKeyCommand(Connection.GetScp03Keys(), newKeySet);
+            var command = new PutKeyCommand(Connection.KeyParameters, keyParameters);
             var response = Connection.SendCommand(command);
             if (response.Status != ResponseStatus.Success)
             {
@@ -274,28 +270,27 @@ namespace Yubico.YubiKey.Scp03
 
         /// <summary>
         /// Delete the key set with the given <c>keyVersionNumber</c>. If the key
-        /// set to delete is the last SCP03 key set on the YubiKey, pass
+        /// set to delete is the last SCP key set on the YubiKey, pass
         /// <c>true</c> as the <c>isLastKey</c> arg.
         /// </summary>
         /// <remarks>
-        /// The key set used to create the SCP03 session cannot be the key set to
+        /// The key set used to create the SCP session cannot be the key set to
         /// be deleted, unless both of the other key sets have been deleted, and
         /// you pass <c>true</c> for <c>isLastKey</c>. In this case, the key will
-        /// be deleted but the SCP03 application on the YubiKey will be reset
+        /// be deleted but the SCP application on the YubiKey will be reset
         /// with the default key.
         /// </remarks>
         /// <param name="keyVersionNumber">
         /// The number specifying which key set to delete.
         /// </param>
         /// <param name="isLastKey">
-        /// If this key set is the last SCP03 key set on the YubiKey, pass
+        /// If this key set is the last SCP key set on the YubiKey, pass
         /// <c>true</c>, otherwise, pass <c>false</c>. This arg has a default of
         /// <c>false</c> so if no argument is given, it will be <c>false</c>.
         /// </param>
-        [Obsolete("Obsolete")]
         public void DeleteKeySet(byte keyVersionNumber, bool isLastKey = false)
         {
-            _log.LogInformation("Deleting an SCP03 key set from a YubiKey.");
+            _log.LogInformation("Deleting an SCP key set from a YubiKey.");
 
             var command = new DeleteKeyCommand(keyVersionNumber, isLastKey);
             var response = Connection.SendCommand(command);
@@ -310,7 +305,7 @@ namespace Yubico.YubiKey.Scp03
         }
 
         /// <summary>
-        /// When the Scp03Session object goes out of scope, this method is called.
+        /// When the ScpSession object goes out of scope, this method is called.
         /// It will close the session. The most important function of closing a
         /// session is to close the connection.
         /// </summary>
@@ -321,7 +316,6 @@ namespace Yubico.YubiKey.Scp03
         // However, that does not apply to sealed classes.
         // So the Dispose method will simply perform the
         // "closing" process, no call to Dispose(bool) or GC.
-        [Obsolete("Obsolete")]
         public void Dispose()
         {
             if (_disposed)

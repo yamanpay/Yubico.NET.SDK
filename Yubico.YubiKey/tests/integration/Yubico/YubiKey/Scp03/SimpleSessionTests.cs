@@ -16,6 +16,7 @@ using System;
 using Xunit;
 using Yubico.YubiKey.Piv;
 using Yubico.YubiKey.Piv.Commands;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.TestUtilities;
 
 namespace Yubico.YubiKey.Scp03
@@ -45,6 +46,7 @@ namespace Yubico.YubiKey.Scp03
         }
 
         [Fact]
+        [Obsolete("Obsolete")]
         public void ConnectScp03_Application_Succeeds()
         {
             IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(
@@ -61,6 +63,7 @@ namespace Yubico.YubiKey.Scp03
         }
 
         [Fact]
+        [Obsolete("Obsolete")]
         public void ConnectScp03_AlgorithmId_Succeeds()
         {
             IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(
@@ -78,6 +81,7 @@ namespace Yubico.YubiKey.Scp03
         }
 
         [Fact]
+        [Obsolete("Obsolete")]
         public void TryConnectScp03_Application_Succeeds()
         {
             IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(
@@ -97,19 +101,20 @@ namespace Yubico.YubiKey.Scp03
         }
 
         [Fact]
+        [Obsolete("Obsolete")]
+        [Trait(TraitTypes.Category, TestCategories.Simple)]
         public void TryConnectScp03_AlgorithmId_Succeeds()
         {
-            IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(
                 Transport.SmartCard, FirmwareVersion.V5_3_0);
 
-            using var scp03Keys = new StaticKeys();
+            var keyParameters = Scp03KeyParameters.DefaultKey;
 
-            bool isValid = device.TryConnectScp03(
-                YubiKeyApplication.Piv.GetIso7816ApplicationId(), scp03Keys, out IScp03YubiKeyConnection? connection);
+            var isValid = device.TryConnectScp(YubiKeyApplication.Piv, keyParameters, false, out var connection);
             using (connection)
             {
-                Assert.NotNull(connection);
                 Assert.True(isValid);
+                Assert.NotNull(connection);
                 var cmd = new VerifyPinCommand(_pin);
                 VerifyPinResponse rsp = connection!.SendCommand(cmd);
                 Assert.Equal(ResponseStatus.Success, rsp.Status);

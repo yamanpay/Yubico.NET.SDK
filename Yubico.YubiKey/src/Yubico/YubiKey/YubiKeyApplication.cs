@@ -13,6 +13,9 @@
 // limitations under the License.
 
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace Yubico.YubiKey
 {
@@ -61,8 +64,38 @@ namespace Yubico.YubiKey
                 YubiKeyApplication.YubiHsmAuth => YubiHsmAuthId,
                 YubiKeyApplication.Scp03 => Scp03AuthId,
                 YubiKeyApplication.SecurityDomain => SecurityDomainAppId,
-                
+
                 _ => throw new NotSupportedException(ExceptionMessages.ApplicationIdNotFound),
             };
+        
+        public static ReadOnlyDictionary<YubiKeyApplication, ReadOnlyMemory<byte>> ApplicationIds =>
+            new ReadOnlyDictionary<YubiKeyApplication, ReadOnlyMemory<byte>>(
+                new Dictionary<YubiKeyApplication, ReadOnlyMemory<byte>>
+                {
+                    { YubiKeyApplication.Management, ManagementAppId },
+                    { YubiKeyApplication.Otp, OtpAppId },
+                    { YubiKeyApplication.FidoU2f, FidoU2fAppId },
+                    { YubiKeyApplication.Fido2, Fido2AppId },
+                    { YubiKeyApplication.Oath, OathAppId },
+                    { YubiKeyApplication.OpenPgp, OpenPgpAppId },
+                    { YubiKeyApplication.Piv, PivAppId },
+                    { YubiKeyApplication.OtpNdef, OtpNdef },
+                    { YubiKeyApplication.YubiHsmAuth, YubiHsmAuthId },
+                    { YubiKeyApplication.Scp03, Scp03AuthId },
+                    { YubiKeyApplication.SecurityDomain, SecurityDomainAppId }
+                });
+        
+        public static YubiKeyApplication GetById(ReadOnlySpan<byte> applicationId)
+        {
+            foreach (var kvp in ApplicationIds)
+            {
+                if (kvp.Value.Span.SequenceEqual(applicationId))
+                {
+                    return kvp.Key;
+                }
+            }
+
+            throw new ArgumentException(nameof(applicationId)); //TODO better exp
+        }
     }
 }

@@ -15,13 +15,13 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Threading;
 using Microsoft.Extensions.Logging;
 using Yubico.Core.Devices;
 using Yubico.Core.Devices.Hid;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.Core.Logging;
 using Yubico.YubiKey.DeviceExtensions;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.Scp03;
 using MgmtCmd = Yubico.YubiKey.Management.Commands;
 
@@ -30,6 +30,7 @@ namespace Yubico.YubiKey
     public partial class YubiKeyDevice : IYubiKeyDevice
     {
         #region IYubiKeyDeviceInfo
+
         /// <inheritdoc />
         public YubiKeyCapabilities AvailableUsbCapabilities => _yubiKeyInfo.AvailableUsbCapabilities;
 
@@ -92,26 +93,31 @@ namespace Yubico.YubiKey
 
         /// <inheritdoc />
         public bool ConfigurationLocked => _yubiKeyInfo.ConfigurationLocked;
+
         #endregion
 
         private const int _lockCodeLength = MgmtCmd.SetDeviceInfoBaseCommand.LockCodeLength;
 
         private static readonly ReadOnlyMemory<byte> _lockCodeAllZeros = new byte[_lockCodeLength];
 
-        internal bool HasSmartCard => !(_smartCardDevice is null);
-        internal bool HasHidFido => !(_hidFidoDevice is null);
-        internal bool HasHidKeyboard => !(_hidKeyboardDevice is null);
+        internal bool HasSmartCard => !(SmartCardDevice is null);
+        internal bool HasHidFido => !(HidFidoDevice is null);
+        internal bool HasHidKeyboard => !(HidKeyboardDevice is null);
         internal bool IsNfcDevice { get; private set; }
 
-        private ISmartCardDevice? _smartCardDevice;
-        private IHidDevice? _hidFidoDevice;
-        private IHidDevice? _hidKeyboardDevice;
+        private ISmartCardDevice? SmartCardDevice { get; set; }
+        private IHidDevice? HidFidoDevice { get; set; }
+        private IHidDevice? HidKeyboardDevice { get; set; }
         private IYubiKeyDeviceInfo _yubiKeyInfo;
-        private Transport _lastActiveTransport;
+        internal Transport _lastActiveTransport;
+
+        private ConnectionFactory _connectionFactory =>
+            new ConnectionFactory(
+                Log.GetLogger<ConnectionFactory>(), this, SmartCardDevice, HidKeyboardDevice, HidFidoDevice);
 
         private readonly ILogger _log = Log.GetLogger<YubiKeyDevice>();
 
-        internal ISmartCardDevice GetSmartCardDevice() => _smartCardDevice!;
+        internal ISmartCardDevice GetSmartCardDevice() => SmartCardDevice!;
 
         /// <inheritdoc />
         public Transport AvailableTransports
@@ -132,7 +138,9 @@ namespace Yubico.YubiKey
 
                 if (HasSmartCard)
                 {
-                    transports |= IsNfcDevice ? Transport.NfcSmartCard : Transport.UsbSmartCard;
+                    transports |= IsNfcDevice
+                        ? Transport.NfcSmartCard
+                        : Transport.UsbSmartCard;
                 }
 
                 return transports;
@@ -150,13 +158,13 @@ namespace Yubico.YubiKey
             switch (device)
             {
                 case ISmartCardDevice scardDevice:
-                    _smartCardDevice = scardDevice;
+                    SmartCardDevice = scardDevice;
                     break;
                 case IHidDevice hidDevice when hidDevice.IsKeyboard():
-                    _hidKeyboardDevice = hidDevice;
+                    HidKeyboardDevice = hidDevice;
                     break;
                 case IHidDevice hidDevice when hidDevice.IsFido():
-                    _hidFidoDevice = hidDevice;
+                    HidFidoDevice = hidDevice;
                     break;
                 default:
                     throw new ArgumentException(ExceptionMessages.DeviceTypeNotRecognized, nameof(device));
@@ -165,8 +173,10 @@ namespace Yubico.YubiKey
             _log.LogInformation("Created a YubiKeyDevice based on the {Transport} transport.", _lastActiveTransport);
 
             _yubiKeyInfo = info;
-            IsNfcDevice = _smartCardDevice?.IsNfcTransport() ?? false;
+            IsNfcDevice = SmartCardDevice?.IsNfcTransport() ?? false;
             _lastActiveTransport = GetTransportIfOnlyDevice();
+
+            //Todo consolidate constructors..
         }
 
         /// <summary>
@@ -182,9 +192,9 @@ namespace Yubico.YubiKey
             IHidDevice? hidFidoDevice,
             IYubiKeyDeviceInfo yubiKeyDeviceInfo)
         {
-            _smartCardDevice = smartCardDevice;
-            _hidFidoDevice = hidFidoDevice;
-            _hidKeyboardDevice = hidKeyboardDevice;
+            SmartCardDevice = smartCardDevice;
+            HidFidoDevice = hidFidoDevice;
+            HidKeyboardDevice = hidKeyboardDevice;
             _yubiKeyInfo = yubiKeyDeviceInfo;
             IsNfcDevice = smartCardDevice?.IsNfcTransport() ?? false;
             _lastActiveTransport = GetTransportIfOnlyDevice(); // Must be after setting the three device fields.
@@ -200,7 +210,7 @@ namespace Yubico.YubiKey
         /// The device does not have the same ParentDeviceId, or
         /// The device is not of a recognizable type.
         /// </exception>
-        public void Merge(IDevice device)
+        public void Merge(IDevice device) // TODO Consider INTERNAL
         {
             if (!((IYubiKeyDevice)this).HasSameParentDevice(device))
             {
@@ -215,7 +225,7 @@ namespace Yubico.YubiKey
         /// </summary>
         /// <param name="device"></param>
         /// <param name="info"></param>
-        public void Merge(IDevice device, IYubiKeyDeviceInfo info)
+        public void Merge(IDevice device, IYubiKeyDeviceInfo info) // TODO Consider INTERNAL
         {
             // First merge the devices
             MergeDevice(device);
@@ -230,224 +240,141 @@ namespace Yubico.YubiKey
                 _yubiKeyInfo = info;
             }
         }
-
-        private void MergeDevice(IDevice device)
-        {
-            switch (device)
-            {
-                case ISmartCardDevice scardDevice:
-                    _smartCardDevice = scardDevice;
-                    IsNfcDevice = scardDevice.IsNfcTransport();
-                    break;
-                case IHidDevice hidDevice when hidDevice.IsKeyboard():
-                    _hidKeyboardDevice = hidDevice;
-                    break;
-                case IHidDevice hidDevice when hidDevice.IsFido():
-                    _hidFidoDevice = hidDevice;
-                    break;
-                default:
-                    throw new ArgumentException(ExceptionMessages.DeviceTypeNotRecognized, nameof(device));
-            }
-
-            _lastActiveTransport = GetTransportIfOnlyDevice();
-        }
-
-        bool IYubiKeyDevice.HasSameParentDevice(IDevice device) => HasSameParentDevice(device);
-
-        internal protected bool HasSameParentDevice(IDevice device)
-        {
-            if (device is null)
-            {
-                throw new ArgumentNullException(nameof(device));
-            }
-
-            // Never match on a missing parent ID
-            if (device.ParentDeviceId is null)
-            {
-                return false;
-            }
-
-            return _smartCardDevice?.ParentDeviceId == device.ParentDeviceId
-                || _hidFidoDevice?.ParentDeviceId == device.ParentDeviceId
-                || _hidKeyboardDevice?.ParentDeviceId == device.ParentDeviceId;
-        }
+        
+        /// <inheritdoc />
+        [Obsolete("Use new Scp")]
+        public IYubiKeyConnection Connect(byte[] applicationId) 
+            => Connect(YubiKeyApplicationExtensions.GetById(applicationId));
 
         /// <inheritdoc />
-        public IYubiKeyConnection Connect(YubiKeyApplication yubikeyApplication)
-        {
-            _ = TryConnect(yubikeyApplication, null, true, out var returnValue);
-            return returnValue!;
-        }
-
-        /// <inheritdoc />
+        [Obsolete("Use new Scp")]
         public IScp03YubiKeyConnection ConnectScp03(YubiKeyApplication yubikeyApplication, StaticKeys scp03Keys)
         {
-            _ = TryConnectScp03(yubikeyApplication, null, scp03Keys, true, out var returnValue);
+            #pragma warning disable CA1062
+            _ = TryConnectScp03_Private(yubikeyApplication, scp03Keys, true, out var returnValue);
+            #pragma warning restore CA1062
             return returnValue!;
         }
 
         /// <inheritdoc />
-        public IYubiKeyConnection Connect(byte[] applicationId)
-        {
-            _ = TryConnect(null, applicationId, true, out var returnValue);
-            return returnValue!;
-        }
-
-        /// <inheritdoc />
+        [Obsolete("Use new Scp")]
         public IScp03YubiKeyConnection ConnectScp03(byte[] applicationId, StaticKeys scp03Keys)
         {
-            _ = TryConnectScp03(null, applicationId, scp03Keys, true, out var returnValue);
+            #pragma warning disable CA1062
+            _ = TryConnectScp03_Private(
+                YubiKeyApplicationExtensions.GetById(applicationId), scp03Keys, true, out var returnValue);
+            #pragma warning restore CA1062
             return returnValue!;
         }
 
-        /// <inheritdoc />
-        public bool TryConnect(
-            YubiKeyApplication application,
-            [MaybeNullWhen(returnValue: false)]
-            out IYubiKeyConnection connection) =>
-        TryConnect(application, null, false, out connection);
-
-        /// <inheritdoc />
-        public bool TryConnectScp03(
-            YubiKeyApplication application,
-            StaticKeys scp03Keys,
-            [MaybeNullWhen(returnValue: false)]
-            out IScp03YubiKeyConnection connection) =>
-        TryConnectScp03(application, null, scp03Keys, false, out connection);
-
-        /// <inheritdoc />
-        public bool TryConnect(
-            byte[] applicationId,
-            [MaybeNullWhen(returnValue: false)]
-            out IYubiKeyConnection connection) =>
-        TryConnect(null, applicationId, false, out connection);
-
-        /// <inheritdoc />
-        public bool TryConnectScp03(
-            byte[] applicationId,
-            StaticKeys scp03Keys,
-            [MaybeNullWhen(returnValue: false)]
-            out IScp03YubiKeyConnection connection) =>
-        TryConnectScp03(null, applicationId, scp03Keys, false, out connection);
-
-        // Calls the common code and throws an exception if there is a problem
-        // and throwOnFail is true.
-        private bool TryConnect(
-            YubiKeyApplication? application,
-            byte[]? applicationId,
-            bool throwOnFail,
-            [MaybeNullWhen(returnValue: false)]
-            out IYubiKeyConnection connection)
+        public IScpYubiKeyConnection ConnectScp(byte[] applicationId, ScpKeyParameters scp03Keys)
         {
-            var returnValue = Connect(application, applicationId, null);
-            if (!(returnValue is null) || !throwOnFail)
-            {
-                connection = returnValue;
-                return !(returnValue is null);
-            }
+            _ = TryConnectScp(YubiKeyApplicationExtensions.GetById(applicationId), scp03Keys, true, out var connection);
 
-            throw new NotSupportedException(ExceptionMessages.NoInterfaceAvailable);
+            return connection!;
         }
 
-        private bool TryConnectScp03(
+        [Obsolete("Use new Scp")]
+        internal virtual IYubiKeyConnection? Connect_Legacy(
             YubiKeyApplication? application,
             byte[]? applicationId,
-            StaticKeys scp03Keys,
-            bool throwOnFail,
-            [MaybeNullWhen(returnValue: false)]
-            out IScp03YubiKeyConnection connection)
+            StaticKeys scp03Keys) // TODO Test that this works
         {
-            var returnValue = Connect(application, applicationId, scp03Keys);
-            if (!(returnValue is null) && returnValue is IScp03YubiKeyConnection scp03Connection)
+            application ??= YubiKeyApplicationExtensions.GetById(applicationId);
+            return Connect((YubiKeyApplication)application, new Scp03KeyParameters(ScpKid.Scp03, scp03Keys.KeyVersionNumber, scp03Keys));
+        }
+        
+        /// <inheritdoc />
+        public virtual IYubiKeyConnection Connect(YubiKeyApplication yubikeyApplication) 
+            => _connectionFactory.CreateNonScpConnection(yubikeyApplication);
+
+        /// <inheritdoc />
+        public virtual IYubiKeyConnection Connect(YubiKeyApplication yubikeyApplication, ScpKeyParameters keyParameters) 
+            => _connectionFactory.CreateScpConnection(yubikeyApplication, keyParameters);
+
+        /// <inheritdoc />
+        public IScpYubiKeyConnection ConnectScp(YubiKeyApplication yubikeyApplication, ScpKeyParameters scp03Keys)
+        {
+            _ = TryConnectScp(yubikeyApplication, scp03Keys, true, out var connection);
+
+            return connection!;
+        }
+
+        /// <inheritdoc />
+        public bool TryConnect( //TODO Mark obsolete
+            byte[] applicationId,
+            [MaybeNullWhen(returnValue: false)] out IYubiKeyConnection connection)
+        {
+            connection = Connect(YubiKeyApplicationExtensions.GetById(applicationId));
+            return true;
+        }
+
+        /// <inheritdoc />
+        public bool TryConnect(
+            YubiKeyApplication application,
+            [MaybeNullWhen(returnValue: false)] out IYubiKeyConnection connection) // TODO Consider making nullable again
+        {
+            connection = Connect(application);
+            return true;
+        }
+
+        // public bool TryConnect_P(
+        //     YubiKeyApplication application,
+        //     bool throwOnFail,
+        //     [MaybeNullWhen(returnValue: false)] out IYubiKeyConnection connection)
+        // {
+        //     var attemptedConnection = Connect(application);
+        //     if (attemptedConnection is null && throwOnFail)
+        //     {
+        //         throw new NotSupportedException(ExceptionMessages.NoInterfaceAvailable);
+        //     }
+        //
+        //     connection = attemptedConnection;
+        //     return !(attemptedConnection is null);
+        // }
+        
+        /// <inheritdoc />
+        public bool TryConnectScp(
+            YubiKeyApplication application,
+            ScpKeyParameters keyParameters,
+            bool throwOnFail,
+            [MaybeNullWhen(returnValue: false)] out IScpYubiKeyConnection connection)
+        {
+            var attemptedConnection = Connect(application, keyParameters);
+            if (attemptedConnection is IScpYubiKeyConnection scpConnection)
             {
-                connection = scp03Connection;
+                connection = scpConnection;
                 return true;
             }
 
-            if (!throwOnFail)
+            if (throwOnFail)
             {
-                connection = null;
-                return false;
+                throw new NotSupportedException(ExceptionMessages.NoInterfaceAvailable);
             }
 
-            throw new NotSupportedException(ExceptionMessages.NoInterfaceAvailable);
+            connection = null;
+            return false;
         }
+        
+        /// <inheritdoc />
+        [Obsolete("Use new Scp")]
+        public bool TryConnectScp03(
+            YubiKeyApplication application,
+            StaticKeys scp03Keys,
+            [MaybeNullWhen(returnValue: false)] out IScp03YubiKeyConnection connection)
+#pragma warning disable CA1062
+            => TryConnectScp03_Private(application, scp03Keys, false, out connection);
+#pragma warning restore CA1062
 
-        // Common to all Connect methods.
-        // If application is given, use it. If not, use applicationId.
-        // If scp03Keys are given, make an SCP03 connection. If not, normal
-        // connection.
-        // If a connection is made, return it, if there's an error, return null.
-        internal virtual IYubiKeyConnection? Connect(
-            YubiKeyApplication? application,
-            byte[]? applicationId,
-            StaticKeys? scp03Keys)
-        {
-            _log.LogInformation(
-                "YubiKey {Serial} connecting to {Application} application" + (scp03Keys is null ? "." : " over SCP03."),
-                SerialNumber,
-                application is null ? applicationId is null ? "Unknown" : applicationId.ToString()
-                : Enum.GetName(typeof(YubiKeyApplication), application));
-
-            if (application is null)
-            {
-                if (!(applicationId is null) && HasSmartCard && !(_smartCardDevice is null))
-                {
-                    _log.LogInformation("Connecting via the SmartCard interface.");
-                    WaitForReclaimTimeout(Transport.SmartCard);
-                    return scp03Keys is null
-                        ? new SmartCardConnection(_smartCardDevice, applicationId)
-                        : new Scp03Connection(_smartCardDevice, applicationId, scp03Keys);
-                }
-
-                _log.LogInformation(
-                    (applicationId is null ? "No application given." : "No smart card interface present.") +
-                    "Unable to establish connection to YubiKey.");
-
-                return null;
-            }
-
-            if (!(scp03Keys is null))
-            {
-                if (HasSmartCard && !(_smartCardDevice is null))
-                {
-                    _log.LogInformation("Connecting via the SmartCard interface.");
-                    WaitForReclaimTimeout(Transport.SmartCard);
-                    return new Scp03Connection(_smartCardDevice, (YubiKeyApplication)application, scp03Keys);
-                }
-
-                return null;
-            }
-
-            // OTP application should prefer the HIDKeyboard transport, but fall back on smart card
-            // if unavailable.
-            if (application == YubiKeyApplication.Otp && HasHidKeyboard)
-            {
-                _log.LogInformation("Connecting via the Keyboard interface.");
-                WaitForReclaimTimeout(Transport.HidKeyboard);
-                return new KeyboardConnection(_hidKeyboardDevice!);
-            }
-
-            // FIDO applications should prefer the HIDFido transport, but fall back on smart card
-            // if unavailable.
-            if ((application == YubiKeyApplication.Fido2 || application == YubiKeyApplication.FidoU2f)
-                && HasHidFido)
-            {
-                _log.LogInformation("Connecting via the FIDO interface.");
-                WaitForReclaimTimeout(Transport.HidFido);
-                return new FidoConnection(_hidFidoDevice!);
-            }
-
-            if (HasSmartCard && !(_smartCardDevice is null))
-            {
-                _log.LogInformation("Connecting via the SmartCard interface.");
-                WaitForReclaimTimeout(Transport.SmartCard);
-                return new SmartCardConnection(_smartCardDevice, (YubiKeyApplication)application);
-            }
-
-            _log.LogInformation("No smart card interface present. Unable to establish connection to YubiKey.");
-            return null;
-        }
+        /// <inheritdoc />
+        [Obsolete("Use new Scp")]
+        public bool TryConnectScp03(
+            byte[] applicationId,
+            StaticKeys scp03Keys,
+            [MaybeNullWhen(returnValue: false)] out IScp03YubiKeyConnection connection)
+ #pragma warning disable CA1062
+            => TryConnectScp03_Private(YubiKeyApplicationExtensions.GetById(applicationId), scp03Keys, false, out connection);
+ #pragma warning restore CA1062
 
         /// <inheritdoc/>
         public void SetEnabledNfcCapabilities(YubiKeyCapabilities yubiKeyCapabilities)
@@ -573,7 +500,7 @@ namespace Yubico.YubiKey
                         ExceptionMessages.LockCodeWrongLength,
                         _lockCodeLength,
                         lockCode.Length),
-                        nameof(lockCode));
+                    nameof(lockCode));
             }
 
             if (lockCode.SequenceEqual(_lockCodeAllZeros.Span))
@@ -604,7 +531,7 @@ namespace Yubico.YubiKey
                         ExceptionMessages.LockCodeWrongLength,
                         _lockCodeLength,
                         lockCode.Length),
-                        nameof(lockCode));
+                    nameof(lockCode));
             }
 
             var command = new MgmtCmd.SetDeviceInfoCommand();
@@ -627,6 +554,7 @@ namespace Yubico.YubiKey
             int autoEjectTimeout)
         {
             #region argument checks
+
             // Keep only flags related to interfaces. This makes the operation easier for users
             // who may be doing bitwise operations on [Available/Enabled]UsbCapabilities.
             yubiKeyInterfaces &=
@@ -665,6 +593,7 @@ namespace Yubico.YubiKey
                         nameof(autoEjectTimeout));
                 }
             }
+
             #endregion
 
             IYubiKeyResponse response;
@@ -674,8 +603,8 @@ namespace Yubico.YubiKey
             {
                 var deviceFlags =
                     touchEjectEnabled
-                    ? DeviceFlags | DeviceFlags.TouchEject
-                    : DeviceFlags & ~DeviceFlags.TouchEject;
+                        ? DeviceFlags | DeviceFlags.TouchEject
+                        : DeviceFlags & ~DeviceFlags.TouchEject;
 
                 var setDeviceInfoCommand = new MgmtCmd.SetDeviceInfoCommand
                 {
@@ -758,6 +687,7 @@ namespace Yubico.YubiKey
                         CultureInfo.CurrentCulture,
                         ExceptionMessages.NotSupportedByYubiKeyVersion));
             }
+
             IYubiKeyConnection? connection = null;
             try
             {
@@ -779,6 +709,33 @@ namespace Yubico.YubiKey
             {
                 connection?.Dispose();
             }
+        }
+        
+        /////////////////////////////////////////// PRIVATE //////////////////////////////////////////////////////////////////
+
+        [Obsolete("Obsolete")]
+        private bool TryConnectScp03_Private(
+            YubiKeyApplication application,
+            StaticKeys scp03Keys,
+            bool throwOnFail,
+            [MaybeNullWhen(returnValue: false)] out IScp03YubiKeyConnection connection)
+        {
+            var attemptedConnection = Connect(
+                application, new Scp03KeyParameters(0x01, scp03Keys.KeyVersionNumber, scp03Keys)); //TODO Use constant 0x01
+
+            if (attemptedConnection is IScp03YubiKeyConnection scp03Connection) // fails because it is now an ScpCOnnection
+            {
+                connection = scp03Connection;
+                return true;
+            }
+
+            if (throwOnFail)
+            {
+                throw new NotSupportedException(ExceptionMessages.NoInterfaceAvailable);
+            }
+
+            connection = null;
+            return false;
         }
 
         private IYubiKeyResponse SendConfiguration(MgmtCmd.SetDeviceInfoBaseCommand baseCommand)
@@ -813,8 +770,7 @@ namespace Yubico.YubiKey
             }
         }
 
-        private IYubiKeyResponse SendConfiguration(
-            MgmtCmd.SetLegacyDeviceConfigBase baseCommand)
+        private IYubiKeyResponse SendConfiguration(MgmtCmd.SetLegacyDeviceConfigBase baseCommand)
         {
             IYubiKeyConnection? connection = null;
             try
@@ -841,8 +797,50 @@ namespace Yubico.YubiKey
                 connection?.Dispose();
             }
         }
+        
+        private void MergeDevice(IDevice device)
+        {
+            switch (device)
+            {
+                case ISmartCardDevice scardDevice:
+                    SmartCardDevice = scardDevice;
+                    IsNfcDevice = scardDevice.IsNfcTransport();
+                    break;
+                case IHidDevice hidDevice when hidDevice.IsKeyboard():
+                    HidKeyboardDevice = hidDevice;
+                    break;
+                case IHidDevice hidDevice when hidDevice.IsFido():
+                    HidFidoDevice = hidDevice;
+                    break;
+                default:
+                    throw new ArgumentException(ExceptionMessages.DeviceTypeNotRecognized, nameof(device));
+            }
+
+            _lastActiveTransport = GetTransportIfOnlyDevice();
+        }
+
+        bool IYubiKeyDevice.HasSameParentDevice(IDevice device) => HasSameParentDevice(device);
+
+        internal protected bool HasSameParentDevice(IDevice device)
+        {
+            if (device is null)
+            {
+                throw new ArgumentNullException(nameof(device));
+            }
+
+            // Never match on a missing parent ID
+            if (device.ParentDeviceId is null)
+            {
+                return false;
+            }
+
+            return SmartCardDevice?.ParentDeviceId == device.ParentDeviceId
+                || HidFidoDevice?.ParentDeviceId == device.ParentDeviceId
+                || HidKeyboardDevice?.ParentDeviceId == device.ParentDeviceId;
+        }
 
         #region IEquatable<T> and IComparable<T>
+
         /// <inheritdoc/>
         public override bool Equals(object obj)
         {
@@ -901,9 +899,9 @@ namespace Yubico.YubiKey
         internal protected bool Contains(IDevice other) =>
             other switch
             {
-                ISmartCardDevice scDevice => scDevice.Path == _smartCardDevice?.Path,
-                IHidDevice hidDevice => hidDevice.Path == _hidKeyboardDevice?.Path ||
-                                        hidDevice.Path == _hidFidoDevice?.Path,
+                ISmartCardDevice scDevice => scDevice.Path == SmartCardDevice?.Path,
+                IHidDevice hidDevice => hidDevice.Path == HidKeyboardDevice?.Path ||
+                    hidDevice.Path == HidFidoDevice?.Path,
                 _ => false
             };
 
@@ -929,7 +927,9 @@ namespace Yubico.YubiKey
 
                 if (HasSmartCard)
                 {
-                    int delta = string.Compare(_smartCardDevice!.Path, concreteKey._smartCardDevice!.Path, StringComparison.Ordinal);
+                    int delta = string.Compare(
+                        SmartCardDevice!.Path, concreteKey.SmartCardDevice!.Path, StringComparison.Ordinal);
+
                     if (delta != 0)
                     {
                         return delta;
@@ -942,7 +942,9 @@ namespace Yubico.YubiKey
 
                 if (HasHidFido)
                 {
-                    int delta = string.Compare(_hidFidoDevice!.Path, concreteKey._hidFidoDevice!.Path, StringComparison.Ordinal);
+                    int delta = string.Compare(
+                        HidFidoDevice!.Path, concreteKey.HidFidoDevice!.Path, StringComparison.Ordinal);
+
                     if (delta != 0)
                     {
                         return delta;
@@ -955,7 +957,9 @@ namespace Yubico.YubiKey
 
                 if (HasHidKeyboard)
                 {
-                    int delta = string.Compare(_hidKeyboardDevice!.Path, concreteKey._hidKeyboardDevice!.Path, StringComparison.Ordinal);
+                    int delta = string.Compare(
+                        HidKeyboardDevice!.Path, concreteKey.HidKeyboardDevice!.Path, StringComparison.Ordinal);
+
                     if (delta != 0)
                     {
                         return delta;
@@ -998,7 +1002,9 @@ namespace Yubico.YubiKey
 
         /// <inheritdoc/>
         public static bool operator <(YubiKeyDevice left, YubiKeyDevice right) =>
-            left is null ? right is object : left.CompareTo(right) < 0;
+            left is null
+                ? right is object
+                : left.CompareTo(right) < 0;
 
         /// <inheritdoc/>
         public static bool operator <=(YubiKeyDevice left, YubiKeyDevice right) =>
@@ -1010,22 +1016,27 @@ namespace Yubico.YubiKey
 
         /// <inheritdoc/>
         public static bool operator >=(YubiKeyDevice left, YubiKeyDevice right) =>
-            left is null ? right is null : left.CompareTo(right) >= 0;
+            left is null
+                ? right is null
+                : left.CompareTo(right) >= 0;
+
         #endregion
 
         #region System.Object overrides
+
         /// <inheritdoc/>
         public override int GetHashCode()
         {
             return !(SerialNumber is null)
                 ? SerialNumber!.GetHashCode()
                 : HashCode.Combine(
-                    _smartCardDevice?.Path,
-                    _hidFidoDevice?.Path,
-                    _hidKeyboardDevice?.Path);
+                    SmartCardDevice?.Path,
+                    HidFidoDevice?.Path,
+                    HidKeyboardDevice?.Path);
         }
 
         private static readonly string EOL = Environment.NewLine;
+
         /// <inheritdoc/>
         public override string ToString()
         {
@@ -1041,19 +1052,11 @@ namespace Yubico.YubiKey
                 + "- Available NFC Capabilities: " + AvailableNfcCapabilities + EOL
                 + "- Enabled USB Capabilities: " + EnabledUsbCapabilities + EOL
                 + "- Enabled NFC Capabilities: " + EnabledNfcCapabilities + EOL;
+
             return res;
         }
-        #endregion
 
-        private DateTime GetLastActiveTime() =>
-            _lastActiveTransport switch
-            {
-                Transport.SmartCard when _smartCardDevice is { } => _smartCardDevice.LastAccessed,
-                Transport.HidFido when _hidFidoDevice is { } => _hidFidoDevice.LastAccessed,
-                Transport.HidKeyboard when _hidKeyboardDevice is { } => _hidKeyboardDevice.LastAccessed,
-                Transport.None => DateTime.Now,
-                _ => throw new InvalidOperationException(ExceptionMessages.DeviceTypeNotRecognized)
-            };
+        #endregion
 
         // If this YubiKey only has a single active USB transport attached to it, we do not really need to worry about
         // the reclaim timeout. This can help speed up the first access of the device as we know for a fact that there
@@ -1078,64 +1081,6 @@ namespace Yubico.YubiKey
             }
 
             return Transport.None;
-        }
-
-        // This function handles waiting for the reclaim timeout on the YubiKey to elapse. The reclaim timeout requires
-        // the SDK to wait 3 seconds since the last USB message to an interface before switching to a different interface.
-        // Failure to wait can result in very strange behavior from the USB devices ultimately resulting in communication
-        // failures (i.e. exceptions).
-        private void WaitForReclaimTimeout(Transport newTransport)
-        {
-            // Newer YubiKeys are able to switch interfaces much, much faster. Maybe this is being paranoid, but we
-            // should still probably wait a few milliseconds for things to stabilize. But definitely not the full
-            // three seconds! For older keys, we use a value of 3.01 seconds to give us a little wiggle room as the
-            // YubiKey's measurement for the reclaim timeout is likely not as accurate as our system clock.
-            var reclaimTimeout = CanFastReclaim() ? TimeSpan.FromMilliseconds(100) : TimeSpan.FromSeconds(3.01);
-
-            // We're only affected by the reclaim timeout if we're switching USB transports.
-            if (_lastActiveTransport == newTransport)
-            {
-                _log.LogInformation(
-                    "{Transport} transport is already active. No need to wait for reclaim.",
-                    _lastActiveTransport);
-
-                return;
-            }
-
-            _log.LogInformation(
-                "Switching USB transports from {OldTransport} to {NewTransport}.",
-                _lastActiveTransport,
-                newTransport);
-
-            var timeSinceLastActivation = DateTime.Now - GetLastActiveTime();
-
-            // If we haven't already waited the duration of the reclaim timeout, we need to do so.
-            // Otherwise, we've already waited and can immediately switch the transport.
-            if (timeSinceLastActivation < reclaimTimeout)
-            {
-                var waitNeeded = reclaimTimeout - timeSinceLastActivation;
-
-                _log.LogInformation(
-                    "Reclaim timeout still active. Need to wait {TimeMS} milliseconds.",
-                    waitNeeded.TotalMilliseconds);
-
-                Thread.Sleep(waitNeeded);
-            }
-
-            _lastActiveTransport = newTransport;
-
-            _log.LogInformation("Reclaim timeout has lapsed. It is safe to switch USB transports.");
-        }
-
-        private bool CanFastReclaim()
-        {
-            if (AppContext.TryGetSwitch(YubiKeyCompatSwitches.UseOldReclaimTimeoutBehavior, out bool useOldBehavior) &&
-                useOldBehavior)
-            {
-                return false;
-            }
-
-            return this.HasFeature(YubiKeyFeature.FastUsbReclaim);
         }
     }
 }

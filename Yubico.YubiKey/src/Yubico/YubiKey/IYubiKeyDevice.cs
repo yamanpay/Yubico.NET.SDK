@@ -15,6 +15,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Yubico.Core.Devices;
+using Yubico.YubiKey.Scp;
 using Yubico.YubiKey.Scp03;
 using MgmtCmd = Yubico.YubiKey.Management.Commands;
 
@@ -83,6 +84,7 @@ namespace Yubico.YubiKey
         /// An instance of a class that implements the
         /// <see cref="IScp03YubiKeyConnection"/> interface.
         /// </returns>
+        [Obsolete("Use new Scp")]
         IScp03YubiKeyConnection ConnectScp03(YubiKeyApplication yubikeyApplication, StaticKeys scp03Keys);
 
         /// <summary>
@@ -97,6 +99,7 @@ namespace Yubico.YubiKey
         /// An instance of a class that implements the
         /// <see cref="IYubiKeyConnection"/> interface.
         /// </returns>
+        [Obsolete("Obsolute")]
         IYubiKeyConnection Connect(byte[] applicationId);
 
         /// <summary>
@@ -126,7 +129,10 @@ namespace Yubico.YubiKey
         /// An instance of a class that implements the
         /// <see cref="IYubiKeyConnection"/> interface.
         /// </returns>
+        [Obsolete("Use new Scp")]
         IScp03YubiKeyConnection ConnectScp03(byte[] applicationId, StaticKeys scp03Keys);
+        // TODO DOCU
+        IScpYubiKeyConnection ConnectScp(YubiKeyApplication yubikeyApplication, ScpKeyParameters scp03Keys);
 
         /// <summary>
         /// Checks whether a IYubiKeyDevice instance contains a particular platform <see cref="IDevice" />.
@@ -175,6 +181,7 @@ namespace Yubico.YubiKey
         /// </param>
         /// <param name="connection">Out parameter containing the <see cref="IYubiKeyConnection"/> instance.</param>
         /// <returns>Boolean indicating whether the call was successful.</returns>
+        [Obsolete("Use new Scp")]
         bool TryConnectScp03(
             YubiKeyApplication application,
             StaticKeys scp03Keys,
@@ -188,6 +195,7 @@ namespace Yubico.YubiKey
         /// application to open.</param>
         /// <param name="connection">Out parameter containing the <see cref="IYubiKeyConnection"/> instance.</param>
         /// <returns>Boolean indicating whether the call was successful.</returns>
+        [Obsolete("Obsolute")]
         bool TryConnect(
             byte[] applicationId,
             [MaybeNullWhen(returnValue: false)]
@@ -214,11 +222,20 @@ namespace Yubico.YubiKey
         /// </param>
         /// <param name="connection">Out parameter containing the <see cref="IYubiKeyConnection"/> instance.</param>
         /// <returns>Boolean indicating whether the call was successful.</returns>
+        [Obsolete("Use new Scp")]
         bool TryConnectScp03(
             byte[] applicationId,
             StaticKeys scp03Keys,
             [MaybeNullWhen(returnValue: false)]
             out IScp03YubiKeyConnection connection);
+        
+        // TODO DOcumentation
+        bool TryConnectScp(
+            YubiKeyApplication application,
+            ScpKeyParameters keyParameters,
+            bool throwOnFail,
+            [MaybeNullWhen(returnValue: false)]
+            out IScpYubiKeyConnection connection);
 
         /// <summary>
         /// Sets which NFC features are enabled (and disabled).
