@@ -47,8 +47,8 @@ namespace Yubico.YubiKey.Scp03.Commands
             Assert.True(isValid);
             Assert.NotNull(connection);
 
-            var cmd = new DeleteKeyCommand(1, false);
-            Scp03Response rsp = connection!.SendCommand(cmd);
+            var cmd = new Scp03.Commands.DeleteKeyCommand(1, false);
+            Scp03.Commands.Scp03Response rsp = connection!.SendCommand(cmd);
             Assert.Equal(ResponseStatus.Success, rsp.Status);
         }
         
@@ -74,7 +74,7 @@ namespace Yubico.YubiKey.Scp03.Commands
             Assert.True(isValid);
             Assert.NotNull(connection);
 
-            var cmd = new DeleteKeyCommand(1, false);
+            var cmd = new Scp03.Commands.DeleteKeyCommand(1, false);
             var rsp = connection!.SendCommand(cmd);
             Assert.Equal(ResponseStatus.Success, rsp.Status);
         }
@@ -107,8 +107,8 @@ namespace Yubico.YubiKey.Scp03.Commands
             Assert.True(isValid);
             Assert.NotNull(connection);
 
-            var cmd = new DeleteKeyCommand(2, false);
-            Scp03Response rsp = connection!.SendCommand(cmd);
+            var cmd = new Scp03.Commands.DeleteKeyCommand(2, false);
+            Scp03.Commands.Scp03Response rsp = connection!.SendCommand(cmd);
             Assert.Equal(ResponseStatus.Success, rsp.Status);
         }
 
@@ -140,8 +140,8 @@ namespace Yubico.YubiKey.Scp03.Commands
             Assert.True(isValid);
             Assert.NotNull(connection);
 
-            var cmd = new DeleteKeyCommand(3, true);
-            Scp03Response rsp = connection!.SendCommand(cmd);
+            var cmd = new Scp03.Commands.DeleteKeyCommand(3, true);
+            Scp03.Commands.Scp03Response rsp = connection!.SendCommand(cmd);
             Assert.Equal(ResponseStatus.Success, rsp.Status);
         }
     }

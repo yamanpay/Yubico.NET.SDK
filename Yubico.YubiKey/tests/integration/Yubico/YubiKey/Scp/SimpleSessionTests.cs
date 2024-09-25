@@ -16,7 +16,7 @@ using System;
 using Xunit;
 using Yubico.YubiKey.Piv;
 using Yubico.YubiKey.Piv.Commands;
-using Yubico.YubiKey.Scp;
+using Yubico.YubiKey.Scp03;
 using Yubico.YubiKey.TestUtilities;
 
 namespace Yubico.YubiKey.Scp03
@@ -28,6 +28,7 @@ namespace Yubico.YubiKey.Scp03
 
         [Theory]
         [InlineData(StandardTestDevice.Fw5)]
+        [Obsolete("Obsolete")]
         public void SessionSetupAndUse_Succeeds(StandardTestDevice testDeviceType)
         {
             IYubiKeyDevice device = IntegrationTestDeviceEnumeration.GetTestDevice(testDeviceType);
@@ -117,21 +118,6 @@ namespace Yubico.YubiKey.Scp03
                 Assert.NotNull(connection);
                 var cmd = new VerifyPinCommand(_pin);
                 VerifyPinResponse rsp = connection!.SendCommand(cmd);
-                Assert.Equal(ResponseStatus.Success, rsp.Status);
-            }
-        }
-        
-        [Fact]
-        public void TryConnectScp_AlgorithmId_Succeeds()
-        {
-            var device = IntegrationTestDeviceEnumeration.GetTestDevice(Transport.SmartCard, FirmwareVersion.V5_3_0);
-            var isValid = device.TryConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
-            using (connection)
-            {
-                Assert.True(isValid);
-                Assert.NotNull(connection);
-                var cmd = new VerifyPinCommand(_pin);
-                var rsp = connection!.SendCommand(cmd);
                 Assert.Equal(ResponseStatus.Success, rsp.Status);
             }
         }

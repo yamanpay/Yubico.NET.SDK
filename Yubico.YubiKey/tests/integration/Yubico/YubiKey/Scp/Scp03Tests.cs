@@ -15,7 +15,6 @@
 using System;
 using System.Linq;
 using Xunit;
-using Yubico.YubiKey.Piv;
 using Yubico.YubiKey.Piv.Commands;
 using Yubico.YubiKey.Scp03;
 using Yubico.YubiKey.TestUtilities;
@@ -36,7 +35,7 @@ namespace Yubico.YubiKey.Scp
                 Transport.SmartCard,
                 minimumFirmwareVersion: FirmwareVersion.V5_3_0);
 
-            using var session = new ScpSession(Device);
+            using var session = new SecurityDomainSession(Device);
             session.Reset();
         }
 
@@ -55,19 +54,19 @@ namespace Yubico.YubiKey.Scp
             // assumeFalse("SCP03 not supported over NFC on FIPS capable devices",
             //     state.getDeviceInfo().getFipsCapable() != 0 && !state.isUsbTransport());
             
-            using (var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+            using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 session.PutKeySet(newKeyParams);
             }
 
-            using (_ = new ScpSession(Device, newKeyParams))
+            using (_ = new SecurityDomainSession(Device, newKeyParams))
             {
                 // Authentication with new key should succeed
             }
 
             Assert.Throws<ArgumentException>(() => //TODO Is this the correct exception to throw? 
             {
-                using (_ = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+                using (_ = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
                 {
                     // Default key should not work now and throw an exception
                 }
@@ -81,19 +80,19 @@ namespace Yubico.YubiKey.Scp
             var keyRef2 = new Scp03KeyParameters(ScpKid.Scp03, 0x55, RandomStaticKeys());
  
             // Auth with default key, then replace default key
-            using (var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+            using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 session.PutKeySet(keyRef1);
             }
         
             // Authenticate with key1, then add additional key, keyref2
-            using (var session = new ScpSession(Device, keyRef1))
+            using (var session = new SecurityDomainSession(Device, keyRef1))
             {
                 session.PutKeySet(keyRef2);
             }
         
             // Authenticate with key2, delete key 1
-            using (var session = new ScpSession(Device, keyRef2))
+            using (var session = new SecurityDomainSession(Device, keyRef2))
             {
                 session.DeleteKeySet(keyRef1.KeyReference.VersionNumber);
             }
@@ -102,12 +101,12 @@ namespace Yubico.YubiKey.Scp
             // Should throw because we just deleted it
             Assert.Throws<ArgumentException>(() =>
             {
-                using (_ = new ScpSession(Device, keyRef1))
+                using (_ = new SecurityDomainSession(Device, keyRef1))
                 {
                 }
             });
         
-            using (var session = new ScpSession(Device, keyRef2))
+            using (var session = new SecurityDomainSession(Device, keyRef2))
             {
                 session.DeleteKeySet(keyRef2.KeyReference.VersionNumber, true);
             }
@@ -116,7 +115,7 @@ namespace Yubico.YubiKey.Scp
             // Should throw because we just deleted the last key
             Assert.Throws<ArgumentException>(() =>
             {
-                using (_ = new ScpSession(Device, keyRef2))
+                using (_ = new SecurityDomainSession(Device, keyRef2))
                 {
                     
                 }
@@ -129,59 +128,76 @@ namespace Yubico.YubiKey.Scp
             var keyRef1 = new Scp03KeyParameters(ScpKid.Scp03, 0x10, RandomStaticKeys());
             var keyRef2 = new Scp03KeyParameters(ScpKid.Scp03, 0x10, RandomStaticKeys());
         
-            using (var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+            using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 session.PutKeySet(keyRef1);
             }
         
-            using (var session = new ScpSession(Device, keyRef1))
+            using (var session = new SecurityDomainSession(Device, keyRef1))
             {
                 session.PutKeySet(keyRef2);
             }
             
-            using (_ = new ScpSession(Device, keyRef2))
+            using (_ = new SecurityDomainSession(Device, keyRef2))
             {
                 // Authentication with new key should succeed
             }
             
             Assert.Throws<SecureChannelException>(() => // SecureChannelException this time for some reason, but ArgumentException if I try with the DefaultKey, check google Keep 
             {
-                using (_ = new ScpSession(Device, keyRef1))
+                using (_ = new SecurityDomainSession(Device, keyRef1))
                 {
                     
                 }
             });
         
-            using (_ = new ScpSession(Device, keyRef2))
+            using (_ = new SecurityDomainSession(Device, keyRef2))
             {
                 // Authentication with new key should succeed
             }
         }
 
-        // [Fact]
-        // public void TestWrongKey()
-        // {
-        //     var staticKeys = RandomStaticKeys();
-        //     var keyRef = new Scp03KeyParameters(ScpKid.Scp03, 0x01, staticKeys);
-        //
-        //     Assert.Throws<ScpException>(() => new ScpSession(Device, keyRef));
-        //
-        //     using (var session = new ScpSession(Device, DefaultKey))
-        //     {
-        //         // Authentication with default key should succeed
-        //     }
-        // }
+        [Fact]
+        public void AuthenticateWithWrongKey_Should_ThrowException()
+        {
+            var incorrectKeys = RandomStaticKeys();
+            var keyRef = new Scp03KeyParameters(ScpKid.Scp03, 0x01, incorrectKeys);
+        
+            Assert.Throws<ArgumentException>(() => new SecurityDomainSession(Device, keyRef));
+        
+            using (_ = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
+            {
+                // Authentication with default key should succeed
+            }
+        }
 
         [Fact]
         public void GetInformation_WithDefaultKey_Returns_DefaultKey()
         {
             // Authentication with new key should succeed
-            using var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey);
+            using var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey);
             
             var result = session.GetKeyInformation();
             Assert.NotEmpty(result);
             Assert.Equal(4, result.Count);
             Assert.Equal(0xFF, result.Keys.First().VersionNumber);
+        }
+        
+        [Fact]
+        public void GetInformation_WithDefaultKey_Returns_DefaultKey2()
+        {
+            // Authentication with new key should succeed
+            // using var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey);
+
+            using var connection = Device.ConnectScp(YubiKeyApplication.SecurityDomain, Scp03KeyParameters.DefaultKey);
+            const byte TAG_KEY_INFORMATION = 0xE0;
+            var response = connection.SendCommand(new GetDataCommand(TAG_KEY_INFORMATION));
+            var res = response.GetData();
+            
+            // var result = session.GetKeyInformation();
+            // Assert.NotEmpty(result);
+            // Assert.Equal(4, result.Count);
+            // Assert.Equal(0xFF, result.Keys.First().VersionNumber);
         }
 
         [Fact]
@@ -200,12 +216,12 @@ namespace Yubico.YubiKey.Scp
             // TODO assumeFalse("SCP03 not supported over NFC on FIPS capable devices",
             //     state.getDeviceInfo().getFipsCapable() != 0 && !state.isUsbTransport());
             
-            using (var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+            using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 session.PutKeySet(newKeyParams);
             }
             
-            using (var session = new ScpSession(Device, newKeyParams))
+            using (var session = new SecurityDomainSession(Device, newKeyParams))
             {
                 // Authentication with new key should succeed
                 session.GetKeyInformation();
@@ -213,19 +229,19 @@ namespace Yubico.YubiKey.Scp
             
             Assert.Throws<ArgumentException>(() => //TODO Is this the correct exception to throw? 
             {
-                using (_ = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+                using (_ = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
                 {
                     // Default key should not work now and throw an exception
                 }
             });
             
-            using (var session = new ScpSession(Device))
+            using (var session = new SecurityDomainSession(Device))
             {
                 session.Reset();
             }
             
             // Successful authentication with default key means key has been restored to factory settings
-            using (var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey))
+            using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 var result = session.GetKeyInformation();
             }
