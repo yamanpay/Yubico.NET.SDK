@@ -33,7 +33,7 @@ namespace Yubico.YubiKey.Scp.Commands
     /// key set with a KeyVersionNumber of 1) will be the default key set.
     /// </para>
     /// </remarks>
-    internal class DeleteKeyCommand : IYubiKeyCommand<Scp03Response>
+    internal class DeleteKeyCommand : IYubiKeyCommand<ScpResponse>
     {
         private const byte GpDeleteKeyCla = 0x84;
         private const byte GpDeleteKeyIns = 0xE4;
@@ -70,7 +70,7 @@ namespace Yubico.YubiKey.Scp.Commands
         /// </remarks>
         public DeleteKeyCommand(byte keyVersionNumber, bool isLastKey)
         {
-            _data = new byte[3] { KvnTag, KvnLength, keyVersionNumber };
+            _data = new[] { KvnTag, KvnLength, keyVersionNumber };
             _p2Value = isLastKey ? GpDeleteLastKeyP2 : GpDeleteKeyP2;
         }
 
@@ -83,7 +83,7 @@ namespace Yubico.YubiKey.Scp.Commands
             Data = _data
         };
 
-        public Scp03Response CreateResponseForApdu(ResponseApdu responseApdu) =>
-            new Scp03Response(responseApdu);
+        public ScpResponse CreateResponseForApdu(ResponseApdu responseApdu) =>
+            new ScpResponse(responseApdu);
     }
 }

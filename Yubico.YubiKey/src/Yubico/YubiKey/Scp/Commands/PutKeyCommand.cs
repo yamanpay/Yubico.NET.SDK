@@ -114,7 +114,7 @@ namespace Yubico.YubiKey.Scp.Commands
 
         private const int DataLength = 70;
 
-        private const byte KeyType = 0x88;
+        private const byte KeyType = 0x88; //AES 
         private const byte BlockSize = 17;
         private const byte AesBlockSize = 16;
         private const byte KeyCheckSize = 3;
@@ -151,13 +151,13 @@ namespace Yubico.YubiKey.Scp.Commands
         /// keys used to make the connection. This class needs its
         /// <c>KeyVersionNumber</c> and its DEK.
         /// </summary>
-        public PutKeyCommand(ScpKeyParameters currentKeys, ScpKeyParameters newKeys)
+        public PutKeyCommand(ScpKeyParameters currentKeys, ScpKeyParameters newKeys) //TODO Is this OK? Behaviour of KVN not clear
         {
             // If the currentKeys' KVN is not the same as the newKeys' KVN, then
             // this command is adding a key set and P1 is zero. Otherwise, this
             // command is replacing a key, so set P1 to the KVN of the currentKeys.
-            _p1Value = currentKeys.KeyVersionNumber == newKeys.KeyVersionNumber 
-                ? currentKeys.KeyVersionNumber 
+            _p1Value = currentKeys.KeyReference.VersionNumber == newKeys.KeyReference.VersionNumber 
+                ? currentKeys.KeyReference.VersionNumber 
                 : (byte)0;
 
             // Build the data portion of the APDU
@@ -179,14 +179,13 @@ namespace Yubico.YubiKey.Scp.Commands
             _data = new byte[DataLength];
             using var memStream = new MemoryStream(_data);
             using var binaryWriter = new BinaryWriter(memStream);
-            binaryWriter.Write(newKeys.KeyVersionNumber);
+            binaryWriter.Write(newKeys.KeyReference.VersionNumber);
 
             _checksum = new byte[ChecksumLength];
-            _checksum[0] = newKeys.KeyVersionNumber;
+            _checksum[0] = newKeys.KeyReference.VersionNumber;
             
-            
-            //TODO Make work with SCp03
-            var currentKeys03 = currentKeys as Scp03KeyParameters ?? Scp03KeyParameters.DefaultKey;
+            //TODO Make work with SCp03, Scp11?
+            var currentKeys03 = currentKeys as Scp03KeyParameters ?? Scp03KeyParameters.DefaultKey; //TODO Right now this ?? is acceptable, because Scp03Params are the only ones being used
             var newKeys03 = newKeys as Scp03KeyParameters ?? Scp03KeyParameters.DefaultKey;
             
             byte[] currentDek = currentKeys03.StaticKeys.DataEncryptionKey.ToArray();
@@ -233,7 +232,7 @@ namespace Yubico.YubiKey.Scp.Commands
 
             try
             {
-                byte[] dataToEncrypt = new byte[AesBlockSize] {
+                byte[] dataToEncrypt = new byte[AesBlockSize] { //Initialization Vector, IV
                     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
                 };
                 byte[] checkBlock = AesUtilities.BlockCipher(keyData, dataToEncrypt.AsSpan());

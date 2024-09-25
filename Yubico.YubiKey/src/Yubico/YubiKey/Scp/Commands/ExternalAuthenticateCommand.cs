@@ -22,7 +22,7 @@ namespace Yubico.YubiKey.Scp.Commands
     internal class ExternalAuthenticateCommand : IYubiKeyCommand<ExternalAuthenticateResponse>
     {
         public YubiKeyApplication Application => YubiKeyApplication.InterIndustry;
-        const byte GpExternalAuthenticateCla = 0b1000_0100;
+        const byte GpExternalAuthenticateCla = 0x84;
         const byte GpExternalAuthenticateIns = 0x82;
         const byte GpHighestSecurityLevel = 0b0011_0011;
 

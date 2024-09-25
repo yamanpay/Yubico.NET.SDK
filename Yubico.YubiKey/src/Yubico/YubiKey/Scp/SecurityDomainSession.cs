@@ -13,11 +13,14 @@
 // limitations under the License.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
+using Yubico.Core.Iso7816;
 using Yubico.Core.Logging;
 using Yubico.YubiKey.Scp.Commands;
+using Yubico.YubiKit.Core.Util;
 
 namespace Yubico.YubiKey.Scp
 {
@@ -77,27 +80,28 @@ namespace Yubico.YubiKey.Scp
     /// exception.
     /// </para>
     /// </remarks>
-    public sealed class ScpSession : IDisposable
+    public sealed class SecurityDomainSession : IDisposable
     {
+        private readonly IYubiKeyDevice _yubiKey;
         private bool _disposed;
-        private readonly ILogger _log = Log.GetLogger<ScpSession>();
+        private readonly ILogger _log = Log.GetLogger<SecurityDomainSession>();
 
         /// <summary>
         /// The object that represents the connection to the YubiKey. Most
         /// applications will ignore this, but it can be used to call Commands
         /// directly.
         /// </summary>
-        public IScpYubiKeyConnection Connection { get; private set; }
+        public IScpYubiKeyConnection? Connection { get; private set; }
 
         // The default constructor explicitly defined. We don't want it to be
         // used.
-        private ScpSession()
+        private SecurityDomainSession()
         {
             throw new NotImplementedException();
         }
 
         /// <summary>
-        /// Create an instance of <see cref="ScpSession"/>, the object that
+        /// Create an instance of <see cref="SecurityDomainSession"/>, the object that
         /// represents SCP on the YubiKey.
         /// </summary>
         /// <remarks>
@@ -131,19 +135,44 @@ namespace Yubico.YubiKey.Scp
         /// <exception cref="ArgumentNullException">
         /// The <c>yubiKey</c> or <c>scpKeys</c> argument is null.
         /// </exception>
-        public ScpSession(IYubiKeyDevice yubiKey, ScpKeyParameters scpKeys)
+        public SecurityDomainSession(IYubiKeyDevice yubiKey, ScpKeyParameters scpKeys)
         {
+            _yubiKey = yubiKey;
             _log.LogInformation("Create a new instance of ScpSession.");
             if (yubiKey is null)
             {
                 throw new ArgumentNullException(nameof(yubiKey));
             }
+
             if (scpKeys is null)
             {
                 throw new ArgumentNullException(nameof(scpKeys));
             }
 
-            Connection = yubiKey.ConnectScp(YubiKeyApplication.Scp03, scpKeys);
+            Connection = yubiKey.ConnectScp(YubiKeyApplication.SecurityDomain, scpKeys);
+        }
+
+        /// <summary>
+        /// Create an instance of <see cref="SecurityDomainSession"/>, the object that
+        /// represents SCP on the YubiKey.
+        /// </summary>
+        /// <param name="yubiKey">
+        /// The object that represents the actual YubiKey which will perform the
+        /// operations.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// The <c>yubiKey</c> or <c>scpKeys</c> argument is null.
+        /// </exception>
+        public SecurityDomainSession(IYubiKeyDevice yubiKey)
+        {
+            _yubiKey = yubiKey;
+            _log.LogInformation("Create a new instance of ScpSession.");
+            if (yubiKey is null)
+            {
+                throw new ArgumentNullException(nameof(yubiKey));
+            }
+
+            // Must be able to initiate a session without the connection
         }
 
         /// <summary>
@@ -243,13 +272,19 @@ namespace Yubico.YubiKey.Scp
         /// </exception>
         public void PutKeySet(ScpKeyParameters keyParameters)
         {
+            if (Connection is null)
+            {
+                throw new InvalidOperationException("No connection initialized. Use the other constructor");
+            }
+
             _log.LogInformation("Put a new SCP key set onto a YubiKey.");
 
             if (keyParameters is null)
             {
                 throw new ArgumentNullException(nameof(keyParameters));
             }
-            
+
+            //TODO PutKeyCommand for each, or make a generic one that handles all cases of Scp?
             var command = new PutKeyCommand(Connection.KeyParameters, keyParameters);
             var response = Connection.SendCommand(command);
             if (response.Status != ResponseStatus.Success)
@@ -290,6 +325,11 @@ namespace Yubico.YubiKey.Scp
         /// </param>
         public void DeleteKeySet(byte keyVersionNumber, bool isLastKey = false)
         {
+            if (Connection is null)
+            {
+                throw new InvalidOperationException("No connection initialized. Use the other constructor");
+            }
+
             _log.LogInformation("Deleting an SCP key set from a YubiKey.");
 
             var command = new DeleteKeyCommand(keyVersionNumber, isLastKey);
@@ -304,11 +344,110 @@ namespace Yubico.YubiKey.Scp
             }
         }
 
+        /**
+         * Perform a factory reset of the Security Domain.
+         * This will remove all keys and associated data, as well as restore the default SCP03 static keys,
+         * and generate a new (attestable) SCP11b key.
+         */
+        public void Reset()
+        {
+            _log.LogDebug("Resetting all SCP keys");
+
+            var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
+
+            // Reset is done by blocking all available keys
+            const byte INS_INITIALIZE_UPDATE = 0x50;
+            const byte INS_EXTERNAL_AUTHENTICATE = 0x82;
+            const byte INS_INTERNAL_AUTHENTICATE = 0x88;
+            const byte INS_PERFORM_SECURITY_OPERATION = 0x2A;
+
+            byte[] data = new byte[8];
+            var keys = GetKeyInformation().Keys;
+            foreach (var keyRef in keys)
+            {
+                byte ins;
+                var overridenKeyRef = keyRef;
+
+                switch (keyRef.Id)
+                {
+                    case ScpKid.Scp03:
+                        // SCP03 uses KID=0, we use KVN=0 to allow deleting the default keys
+                        // which have an invalid KVN (0xff).
+                        overridenKeyRef = new KeyReference(0, 0);
+                        ins = INS_INITIALIZE_UPDATE;
+                        break;
+                    case 0x02:
+                    case 0x03:
+                        continue; // Skip these as they are deleted by 0x01
+                    case ScpKid.Scp11a:
+                    case ScpKid.Scp11c:
+                        ins = INS_EXTERNAL_AUTHENTICATE;
+                        break;
+                    case ScpKid.Scp11b:
+                        ins = INS_INTERNAL_AUTHENTICATE;
+                        break;
+                    default: // 0x10, 0x20-0x2F
+                        ins = INS_PERFORM_SECURITY_OPERATION;
+                        break;
+                }
+
+                // Keys have 65 attempts before blocking (and thus removal)
+                for (int i = 0; i < 65; i++)
+                {
+                    var result = connection.SendCommand(new ResetCommand(ins, overridenKeyRef.VersionNumber, overridenKeyRef.Id, data));
+                    switch (result.StatusWord)
+                    {
+                        case SWConstants.AuthenticationMethodBlocked:
+                        case SWConstants.SecurityStatusNotSatisfied:
+                            i = 65;
+                            break;
+                        case SWConstants.InvalidCommandDataParameter:
+                            continue;
+                        default: continue;
+                    }
+                }
+            }
+
+            _log.LogInformation("SCP keys reset");
+        }
+
+        public Dictionary<KeyReference, Dictionary<byte, byte>> GetKeyInformation()
+        {
+            const byte TAG_KEY_INFORMATION = 0xE0;
+
+            var keys = new Dictionary<KeyReference, Dictionary<byte, byte>>();
+            var tlvDataList = TlvObjects.DecodeList(GetData(TAG_KEY_INFORMATION).Span);
+            foreach (var tlvObject in tlvDataList)
+            {
+                var value = TlvObjects.UnpackValue(0xC0, tlvObject.GetBytes().Span);
+                var keyRef = new KeyReference(value.Span[0], value.Span[1]);
+                var keyComponents = new Dictionary<byte, byte>();
+
+                while (!(value = value[2..]).IsEmpty)
+                {
+                    keyComponents.Add(value.Span[0], value.Span[1]);
+                }
+
+                keys.Add(keyRef, keyComponents);
+            }
+
+            return keys;
+        }
+
+        public ReadOnlyMemory<byte> GetData(short tag)
+        {
+            var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
+            var response = connection.SendCommand(new GetDataCommand(tag));
+
+            return response.GetData();
+        }
+
         /// <summary>
         /// When the ScpSession object goes out of scope, this method is called.
         /// It will close the session. The most important function of closing a
         /// session is to close the connection.
         /// </summary>
+
         // Note that .NET recommends a Dispose method call Dispose(true) and
         // GC.SuppressFinalize(this). The actual disposal is in the
         // Dispose(bool) method.
@@ -323,7 +462,7 @@ namespace Yubico.YubiKey.Scp
                 return;
             }
 
-            Connection.Dispose();
+            Connection?.Dispose();
 
             _disposed = true;
         }

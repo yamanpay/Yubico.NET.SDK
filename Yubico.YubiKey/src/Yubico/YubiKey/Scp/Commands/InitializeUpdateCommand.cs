@@ -23,13 +23,13 @@ namespace Yubico.YubiKey.Scp.Commands
     internal class InitializeUpdateCommand : IYubiKeyCommand<InitializeUpdateResponse>
     {
         public YubiKeyApplication Application => YubiKeyApplication.InterIndustry;
-        const byte GpInitializeUpdateCla = 0b1000_0000;
-        const byte GpInitializeUpdateIns = 0x50;
+        private const byte GpInitializeUpdateCla = 0x84;
+        private const byte GpInitializeUpdateIns = 0x50;
         private readonly byte[] _challenge;
         private readonly int _keyVersionNumber;
 
         /// <summary>
-        /// Constructs an EXTERNAL_AUTHENTICATE command, containing the provided data.
+        /// Constructs an INITIALIZE_UPDATE command, containing the provided data.
         /// </summary>
         /// <remarks>
         /// Clients should not generally build this manually. See <see cref="YubiKey.Pipelines.Scp03ApduTransform"/> for more.

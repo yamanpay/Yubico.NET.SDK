@@ -13,55 +13,18 @@
 // limitations under the License.
 
 using System;
-using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey.Scp
 {
-    public abstract class ScpKeyParameters //TODO handle dispose like static keys?
+    public abstract class ScpKeyParameters //TODO handle dispose like static keys? Use ReadOnlyMemorySpan?
     {
-        public byte KeyVersionNumber { get; protected set; }
-        public byte KeyId { get; protected set; }
+        public KeyReference KeyReference { get; protected set; }
 
-        public ReadOnlySpan<byte> GetBytes => new ReadOnlySpan<byte>(new[] { KeyId, KeyVersionNumber });
+        public ReadOnlySpan<byte> GetBytes => new ReadOnlySpan<byte>(new[] { KeyReference.Id, KeyReference.VersionNumber });
 
-        protected ScpKeyParameters()
+        protected ScpKeyParameters(KeyReference keyReference)
         {
-        }
-    }
-
-    public class Scp03KeyParameters : ScpKeyParameters
-    {
-        public StaticKeys StaticKeys { get; }
-
-        public Scp03KeyParameters(
-            byte keyId,
-            byte keyVersionNumber,
-            StaticKeys staticKeys)
-        {
-            KeyId = keyId;
-            KeyVersionNumber = keyVersionNumber;
-            StaticKeys = staticKeys;
-        }
-
-        public Scp03KeyParameters(
-            ScpKid keyId,
-            byte keyVersionNumber,
-            StaticKeys staticKeys) : this((byte)keyId, keyVersionNumber, staticKeys)
-        {
-        }
-
-        public static Scp03KeyParameters DefaultKey =>
-            new Scp03KeyParameters((byte)ScpKid.Scp03, 0xFF, new StaticKeys());
-    }
-
-    public class Scp11KeyParameters : ScpKeyParameters
-    {
-        public Scp11KeyParameters(
-            byte keyId,
-            byte keyVersionNumber)
-        {
-            KeyId = keyId;
-            KeyVersionNumber = keyVersionNumber;
+            KeyReference = keyReference;
         }
     }
 }

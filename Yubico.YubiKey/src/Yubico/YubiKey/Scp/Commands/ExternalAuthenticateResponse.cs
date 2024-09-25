@@ -17,7 +17,7 @@ using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Scp.Commands
 {
-    internal class ExternalAuthenticateResponse : Scp03Response
+    internal class ExternalAuthenticateResponse : ScpResponse
     {
         /// <summary>
         /// Constructs an ExternalAuthenticateResponse based on a ResponseApdu received from the YubiKey.

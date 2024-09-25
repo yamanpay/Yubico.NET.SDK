@@ -19,7 +19,7 @@ using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Scp.Commands
 {
-    internal class InitializeUpdateResponse : Scp03Response
+    internal class InitializeUpdateResponse : ScpResponse
     {
         public IReadOnlyCollection<byte> DiversificationData { get; protected set; }
         public IReadOnlyCollection<byte> KeyInfo { get; protected set; }

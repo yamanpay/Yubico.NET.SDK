@@ -18,9 +18,9 @@ using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Scp.Commands
 {
-    internal class Scp03Response : YubiKeyResponse
+    internal class ScpResponse : YubiKeyResponse
     {
-        public Scp03Response(ResponseApdu responseApdu) :
+        public ScpResponse(ResponseApdu responseApdu) :
             base(responseApdu)
         {
 
@@ -40,7 +40,7 @@ namespace Yubico.YubiKey.Scp.Commands
                     Debug.Assert(Status == ResponseStatus.Success);
                     return;
                 default:
-                    throw new Exception();
+                    throw new Exception(); // looks a bit generic?
             }
         }
     }

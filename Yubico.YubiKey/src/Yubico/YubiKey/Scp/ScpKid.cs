@@ -14,12 +14,11 @@
 
 namespace Yubico.YubiKey.Scp
 {
-    public enum ScpKid
+    public static class ScpKid
     {
-        None,
-        Scp03 = 0x01,
-        Scp11a = 0x11,
-        Scp11b = 0x13,
-        Scp11c = 0x15
+        public const byte Scp03 = 0x01;
+        public const byte Scp11a = 0x11;
+        public const byte Scp11b = 0x13;
+        public const byte Scp11c = 0x15;
     }
 }
