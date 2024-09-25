@@ -46,7 +46,7 @@ namespace Yubico.YubiKey
         }
 
         [Obsolete("Obsolete")]
-        public IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, StaticKeys scp03Keys)
+        internal IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, StaticKeys scp03Keys)
         {
 
             if (_smartCardDevice is null)
