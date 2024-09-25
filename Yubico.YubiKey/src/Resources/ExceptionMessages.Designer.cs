@@ -1914,15 +1914,6 @@ namespace Yubico.YubiKey {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Exception caught when disposing PivSession: {0}, {1}.
-        /// </summary>
-        internal static string PivSessionDisposeUnknownError {
-            get {
-                return ResourceManager.GetString("PivSessionDisposeUnknownError", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to The private ID must be set either explicitly or by specifying that it should be generated before it can be read..
         /// </summary>
         internal static string PrivateIdNotSet {
@@ -2000,6 +1991,15 @@ namespace Yubico.YubiKey {
         internal static string Scp03KeyMismatch {
             get {
                 return ResourceManager.GetString("Scp03KeyMismatch", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Exception caught when disposing Session: {0}, {1}.
+        /// </summary>
+        internal static string SessionDisposeUnknownError {
+            get {
+                return ResourceManager.GetString("SessionDisposeUnknownError", resourceCulture);
             }
         }
         
