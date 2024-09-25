@@ -359,12 +359,8 @@ namespace Yubico.YubiKey.Piv
             {
                 string message = string.Format(
                     CultureInfo.CurrentCulture,
-                    ExceptionMessages.PivSessionDisposeUnknownError, e.GetType(), e.Message);
+                    ExceptionMessages.SessionDisposeUnknownError, e.GetType(), e.Message);
                 
-                // Example:
-                // Exception caught when disposing PivSession: Yubico.PlatformInterop.SCardException,
-                // Unable to begin a transaction with the given smart card. SCARD_E_SERVICE_STOPPED: The smart card resource manager has shut down.
-
                 _log.LogWarning(message);
             }
 
