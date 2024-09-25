@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Globalization;
 
 namespace Yubico.YubiKey.Scp
 {
@@ -29,5 +30,20 @@ namespace Yubico.YubiKey.Scp
             Id = id;
             VersionNumber = versionNumber;
         }
+
+        public override string ToString() => $"KeyRef[Kid=0x{Id:X2}, Kvn=0x{VersionNumber:X2}";
+
+        public override bool Equals(object? obj)
+        {
+            if (obj == null || GetType() != obj.GetType())
+            {
+                return false;
+            }
+
+            var other = (KeyReference)obj;
+            return Id == other.Id && VersionNumber == other.VersionNumber;
+        }
+
+        public override int GetHashCode() => HashCode.Combine(Id, VersionNumber);
     }
 }
