@@ -30,7 +30,7 @@ namespace Yubico.Core.Tlv
         /// <summary>
         /// Creates a new Tlv given a tag and a value.
         /// </summary>
-        public TlvObject(int tag, byte[]? value)
+        public TlvObject(int tag, ReadOnlySpan<byte> value)
         {
             Tag = tag;
             using var stream = new MemoryStream();
@@ -38,7 +38,7 @@ namespace Yubico.Core.Tlv
             byte[] tagBytes = BitConverter.GetBytes(tag).Reverse().SkipWhile(b => b == 0).ToArray();
             stream.Write(tagBytes, 0, tagBytes.Length);
 
-            Length = value?.Length ?? 0;
+            Length = value.Length;
             if (Length < 0x80)
             {
                 stream.WriteByte((byte)Length);
@@ -53,7 +53,7 @@ namespace Yubico.Core.Tlv
             _offset = (int)stream.Position;
             if (value != null)
             {
-                stream.Write(value, 0, Length);
+                stream.Write(value.ToArray(), 0, Length);
             }
 
             _bytes = stream.ToArray();

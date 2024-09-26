@@ -15,10 +15,13 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Yubico.Core.Iso7816;
 using Yubico.Core.Logging;
+using Yubico.Core.Tlv;
 using Yubico.YubiKey.Scp.Commands;
 using Yubico.YubiKit.Core.Util;
 
@@ -394,7 +397,9 @@ namespace Yubico.YubiKey.Scp
                 // Keys have 65 attempts before blocking (and thus removal)
                 for (int i = 0; i < 65; i++)
                 {
-                    var result = connection.SendCommand(new ResetCommand(ins, overridenKeyRef.VersionNumber, overridenKeyRef.Id, data));
+                    var result = connection.SendCommand(
+                        new ResetCommand(ins, overridenKeyRef.VersionNumber, overridenKeyRef.Id, data));
+
                     switch (result.StatusWord)
                     {
                         case SWConstants.AuthenticationMethodBlocked:
@@ -434,10 +439,10 @@ namespace Yubico.YubiKey.Scp
             return keys;
         }
 
-        public ReadOnlyMemory<byte> GetData(short tag)
+        public ReadOnlyMemory<byte> GetData(int tag, ReadOnlyMemory<byte>? data = null)
         {
             var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
-            var response = connection.SendCommand(new GetDataCommand(tag));
+            var response = connection.SendCommand(new GetDataCommand(tag, data));
 
             return response.GetData();
         }
@@ -465,6 +470,39 @@ namespace Yubico.YubiKey.Scp
             Connection?.Dispose();
 
             _disposed = true;
+        }
+
+        public IReadOnlyCollection<X509Certificate2> GetCertificateBundle(KeyReference keyReference)
+        {
+            _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
+            int TAG_CERTIFICATE_STORE = 0xBF21;
+
+            try
+            {
+                var tlvWriter = new TlvWriter();
+                using (var w = tlvWriter.WriteNestedTlv(0xA6))
+                {
+                    tlvWriter.WriteValue(0x83, keyReference.GetBytes);
+                }
+
+                var nestedTlv = tlvWriter.Encode().AsMemory();
+                var resp = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
+                var tlvs = TlvObjects.DecodeList(resp.Span);
+                
+                return tlvs
+                    .Select(der => new X509Certificate2(der.GetBytes().ToArray()))
+                    .ToList();
+            }
+            catch (ApduException e)
+            {
+                // On REFERENCED_DATA_NOT_FOUND return empty list
+                if (e.SW == SWConstants.DataNotFound)
+                {
+                    return new List<X509Certificate2>();
+                }
+
+                throw;
+            }
         }
     }
 }

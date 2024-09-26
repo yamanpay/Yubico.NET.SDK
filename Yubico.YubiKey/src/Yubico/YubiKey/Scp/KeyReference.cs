@@ -31,6 +31,9 @@ namespace Yubico.YubiKey.Scp
             VersionNumber = versionNumber;
         }
 
+
+        public ReadOnlySpan<byte> GetBytes => new[] { Id, VersionNumber }.AsSpan();
+
         public override string ToString() => $"KeyRef[Kid=0x{Id:X2}, Kvn=0x{VersionNumber:X2}";
 
         public override bool Equals(object? obj)

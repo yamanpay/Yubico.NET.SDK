@@ -37,13 +37,15 @@ namespace Yubico.YubiKey.Scp.Commands
     internal class GetDataCommand : IYubiKeyCommand<GetDataCommandResponse>
     {
         private const byte INS_GET_DATA = 0xCA;
-        private readonly short _tag;
+        private readonly int _tag;
+        private readonly ReadOnlyMemory<byte> _data;
 
         public YubiKeyApplication Application => YubiKeyApplication.InterIndustry;
 
-        public GetDataCommand(short tag)
+        public GetDataCommand(int tag, ReadOnlyMemory<byte>? data = null)
         {
             _tag = tag;
+            _data = data ?? ReadOnlyMemory<byte>.Empty;
         }
 
         public CommandApdu CreateCommandApdu() => new CommandApdu
@@ -52,7 +54,7 @@ namespace Yubico.YubiKey.Scp.Commands
             Ins = INS_GET_DATA,
             P1 = (byte)(_tag >> 8),
             P2 = (byte)(_tag & 0xFF),
-            // Data = _data
+            Data = _data
         };
 
         public GetDataCommandResponse CreateResponseForApdu(ResponseApdu responseApdu) =>
