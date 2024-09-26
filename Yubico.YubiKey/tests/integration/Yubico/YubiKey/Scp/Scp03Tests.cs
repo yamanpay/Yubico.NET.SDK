@@ -23,11 +23,10 @@ using Yubico.YubiKey.TestUtilities;
 
 namespace Yubico.YubiKey.Scp
 {
-    // These may require that DeleteKeyCommandTests have been run first.
-    [TestCaseOrderer(PriorityOrderer.TypeName, PriorityOrderer.AssembyName)]
-    public class Scp03Tests // TODO All tests should reset SD INFO before running
+    public class Scp03Tests
     {
         private readonly ReadOnlyMemory<byte> _defaultPin = new byte[]{ 0x31, 0x32, 0x33, 0x34, 0x35, 0x36 };
+        private IYubiKeyDevice Device { get; set; }
 
         public Scp03Tests()
         {
@@ -39,7 +38,6 @@ namespace Yubico.YubiKey.Scp
             session.Reset();
         }
 
-        public IYubiKeyDevice Device { get; set; }
 
         [Fact]
         public void TestImportKey()
@@ -143,7 +141,7 @@ namespace Yubico.YubiKey.Scp
                 // Authentication with new key should succeed
             }
             
-            Assert.Throws<SecureChannelException>(() => // SecureChannelException this time for some reason, but ArgumentException if I try with the DefaultKey, check google Keep 
+            Assert.Throws<SecureChannelException>(() => // TODO SecureChannelException this time for some reason, but ArgumentException if I try with the DefaultKey, check google Keep 
             {
                 using (_ = new SecurityDomainSession(Device, keyRef1))
                 {
@@ -174,8 +172,7 @@ namespace Yubico.YubiKey.Scp
         [Fact]
         public void GetInformation_WithDefaultKey_Returns_DefaultKey()
         {
-            // Authentication with new key should succeed
-            using var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey);
+            using var session = new SecurityDomainSession(Device);
             
             var result = session.GetKeyInformation();
             Assert.NotEmpty(result);
@@ -184,12 +181,10 @@ namespace Yubico.YubiKey.Scp
         }
         
         [Fact]
-        public void GetInformation_WithDefaultKey_Returns_DefaultKey2()
+        public void Connect_GetInformation_WithDefaultKey_Returns_DefaultKey() 
         {
-            // Authentication with new key should succeed
-            // using var session = new ScpSession(Device, Scp03KeyParameters.DefaultKey);
 
-            using var connection = Device.ConnectScp(YubiKeyApplication.SecurityDomain, Scp03KeyParameters.DefaultKey);
+            using var connection = Device.Connect(YubiKeyApplication.SecurityDomain);
             const byte TAG_KEY_INFORMATION = 0xE0;
             var response = connection.SendCommand(new GetDataCommand(TAG_KEY_INFORMATION));
             var res = response.GetData();
@@ -200,6 +195,19 @@ namespace Yubico.YubiKey.Scp
             // Assert.Equal(0xFF, result.Keys.First().VersionNumber);
         }
 
+        [Fact]
+        public void TestGetCertificateBundle()
+        {
+            Skip.IfNot(Device.FirmwareVersion >= FirmwareVersion.V5_7_2);
+
+            using var session = new SecurityDomainSession(Device);
+
+            var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
+            var certificateList = session.GetCertificateBundle(keyReference);
+
+            Assert.NotEmpty(certificateList);
+        }
+        
         [Fact]
         public void Reset_Restores_SecurityDomainKeys_To_FactoryKeys()
         {
@@ -243,7 +251,7 @@ namespace Yubico.YubiKey.Scp
             // Successful authentication with default key means key has been restored to factory settings
             using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
-                var result = session.GetKeyInformation();
+                _ = session.GetKeyInformation();
             }
         }
 

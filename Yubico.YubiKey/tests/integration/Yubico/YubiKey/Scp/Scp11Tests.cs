@@ -14,11 +14,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Xunit;
-using Yubico.Core.Buffers;
-using Yubico.YubiKey.Scp03;
 using Yubico.YubiKey.TestUtilities;
 
 namespace Yubico.YubiKey.Scp.Commands
@@ -38,34 +37,40 @@ namespace Yubico.YubiKey.Scp.Commands
         [Fact]
         public void Scp11b_Authenticate_Succeeds()
         {
-            // var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
-            //
-            // var keyParameters = new Scp11KeyParameters(ref, leaf.getPublicKey());
-            // using var session = new SecurityDomainSession(Device);
+            Skip.IfNot(Device.FirmwareVersion >= FirmwareVersion.V5_7_2);
 
+            IReadOnlyCollection<X509Certificate2> certificateList;
+            var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
 
-            // List<X509Certificate> chain = state.withSecurityDomain(defaultKeyParams, session -> {
-            //     return session.getCertificateBundle(ref);
-            // });
-            //
-            // X509Certificate leaf = chain.get(chain.size() - 1);
-            // Scp11KeyParams params = new Scp11KeyParams(ref, leaf.getPublicKey());
-            //
-            // state.withSecurityDomain(params, session -> {
-            //     assertThrows(ApduException.class, () -> verifyScp11bAuth(session));
-            // });
+            using (var session = new SecurityDomainSession(Device))
+            {
+                certificateList = session.GetCertificateBundle(keyReference);
+            }
+
+            var leaf = certificateList.Last();
+            var keyParams = new Scp11KeyParameters(keyReference, leaf.PublicKey);
+            
+            using (var session = new SecurityDomainSession(Device, keyParams))
+            {
+                // TODO do something that verifies that it works, above code wont work because we dont handle Scp11 yet
+                session.GetKeyInformation();
+            }
         }
 
         [Fact]
         public void TestGetCertificateBundle()
         {
+            Skip.IfNot(Device.FirmwareVersion >= FirmwareVersion.V5_7_2);
+
             using var session = new SecurityDomainSession(Device);
+
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
-            IReadOnlyCollection<X509Certificate2> certificateBundle= session.GetCertificateBundle(keyReference);
-            Assert.NotEmpty(certificateBundle);
+            var certificateList = session.GetCertificateBundle(keyReference);
+
+            Assert.NotEmpty(certificateList);
         }
 
-        // private static byte OCE_KID = 0x010;
+        private readonly static byte OCE_KID = 0x010;
         private IYubiKeyDevice Device { get; set; }
     }
 

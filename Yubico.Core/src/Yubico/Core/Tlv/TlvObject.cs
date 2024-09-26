@@ -33,12 +33,13 @@ namespace Yubico.Core.Tlv
         public TlvObject(int tag, ReadOnlySpan<byte> value)
         {
             Tag = tag;
+            byte[] buffer = value.ToArray();
             using var stream = new MemoryStream();
 
-            byte[] tagBytes = BitConverter.GetBytes(tag).Reverse().SkipWhile(b => b == 0).ToArray();
+            byte[] tagBytes = BitConverter.GetBytes(tag).Reverse().SkipWhile(b => b == 0).ToArray(); //TODO check 
             stream.Write(tagBytes, 0, tagBytes.Length);
 
-            Length = value.Length;
+            Length = buffer.Length;
             if (Length < 0x80)
             {
                 stream.WriteByte((byte)Length);
@@ -51,10 +52,8 @@ namespace Yubico.Core.Tlv
             }
 
             _offset = (int)stream.Position;
-            if (value != null)
-            {
-                stream.Write(value.ToArray(), 0, Length);
-            }
+
+            stream.Write(buffer, 0, Length);
 
             _bytes = stream.ToArray();
         }
@@ -102,22 +101,24 @@ namespace Yubico.Core.Tlv
         public static TlvObject ParseFrom(ref ReadOnlySpan<byte> buffer)
         {
             int tag = buffer[0];
-            buffer = buffer.Slice(1);
+            buffer = buffer[1..];
             if ((tag & 0x1F) == 0x1F) // Long form tag
             {
                 do
                 {
                     tag = (tag << 8) | buffer[0];
-                    buffer = buffer.Slice(1);
+                    buffer = buffer[1..];
                 } while ((tag & 0x80) == 0x80);
             }
 
             int length = buffer[0];
-            buffer = buffer.Slice(1);
+            buffer = buffer[1..];
+
             if (length == 0x80)
             {
                 throw new ArgumentException("Indefinite length not supported");
             } 
+
             if (length > 0x80)
             {
                 int lengthLn = length - 0x80;
@@ -125,12 +126,13 @@ namespace Yubico.Core.Tlv
                 for (int i = 0; i < lengthLn; i++)
                 {
                     length = (length << 8) | buffer[0];
-                    buffer = buffer.Slice(1);
+                    buffer = buffer[1..];
                 }
             }
 
-            byte[] value = buffer.Slice(0, length).ToArray();
-            buffer = buffer.Slice(length);
+            ReadOnlySpan<byte> value = buffer[..length];
+            buffer = buffer[length..];
+
             return new TlvObject(tag, value);
         }
         

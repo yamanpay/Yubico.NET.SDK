@@ -166,7 +166,7 @@ namespace Yubico.YubiKey.Scp
         /// <exception cref="ArgumentNullException">
         /// The <c>yubiKey</c> or <c>scpKeys</c> argument is null.
         /// </exception>
-        public SecurityDomainSession(IYubiKeyDevice yubiKey)
+        public SecurityDomainSession(IYubiKeyDevice yubiKey) //TODO Explain that it is not authenticated, you might want to block certain commands that require auth
         {
             _yubiKey = yubiKey;
             _log.LogInformation("Create a new instance of ScpSession.");
@@ -477,32 +477,18 @@ namespace Yubico.YubiKey.Scp
             _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
             int TAG_CERTIFICATE_STORE = 0xBF21;
 
-            try
-            {
-                var tlvWriter = new TlvWriter();
-                using (var w = tlvWriter.WriteNestedTlv(0xA6))
-                {
-                    tlvWriter.WriteValue(0x83, keyReference.GetBytes);
-                }
+            var nestedTlv = new TlvObject(
+                0xA6, //TODO what is this constant?
+                new TlvObject(0x83, keyReference.GetBytes)
+                    .GetBytes().Span
+            ).GetBytes();
 
-                var nestedTlv = tlvWriter.Encode().AsMemory();
-                var resp = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
-                var tlvs = TlvObjects.DecodeList(resp.Span);
-                
-                return tlvs
-                    .Select(der => new X509Certificate2(der.GetBytes().ToArray()))
-                    .ToList();
-            }
-            catch (ApduException e)
-            {
-                // On REFERENCED_DATA_NOT_FOUND return empty list
-                if (e.SW == SWConstants.DataNotFound)
-                {
-                    return new List<X509Certificate2>();
-                }
+            var certificateTlvData = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
+            var certificateTlvList = TlvObjects.DecodeList(certificateTlvData.Span);
 
-                throw;
-            }
+            return certificateTlvList
+                .Select(tlv => new X509Certificate2(tlv.GetBytes().ToArray()))
+                .ToList();
         }
     }
 }
