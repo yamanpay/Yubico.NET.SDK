@@ -27,30 +27,32 @@ namespace Yubico.YubiKey.Scp
     /// </summary>
     public class Scp11KeyParameters : ScpKeyParameters
     {
-        public PublicKey EllipticCurveKeyAgreementKeyPublicKey { get; }
-        public KeyReference? OffCardEntityKeyRef { get; }
-        public ECDsa? OffCardEntityEllipticCurveAgreementPrivateKey { get; }
+        public ECParameters SecurityDomainEllipticCurveKeyAgreementKeyPublicKey { get; }
+        public KeyReference? OffCardEntityKeyReference { get; }
+        public ECParameters? OffCardEntityEllipticCurveAgreementPrivateKey { get; }
         public IReadOnlyList<X509Certificate2> Certificates { get; }
 
         public Scp11KeyParameters(
             KeyReference keyReference,
-            PublicKey pkSdEcka,
-            KeyReference? oceKeyRef = null,
-            ECDsa? skOceEcka = null,
+            ECParameters pkSdEcka,
+            KeyReference? oceKeyReference = null,
+            ECParameters? skOceEcka = null,
             IEnumerable<X509Certificate2>? certificates = null)
             : base(keyReference)
         {
-            EllipticCurveKeyAgreementKeyPublicKey = pkSdEcka ?? throw new ArgumentNullException(nameof(pkSdEcka));
-            OffCardEntityKeyRef = oceKeyRef;
+            
+            SecurityDomainEllipticCurveKeyAgreementKeyPublicKey = pkSdEcka;
+            OffCardEntityKeyReference = oceKeyReference;
             OffCardEntityEllipticCurveAgreementPrivateKey = skOceEcka;
             Certificates = certificates?.ToList() ?? new List<X509Certificate2>();
 
             ValidateParameters();
         }
 
-        public Scp11KeyParameters(KeyReference keyReference, PublicKey pkSdEcka)
+        public Scp11KeyParameters(KeyReference keyReference, ECParameters pkSdEcka)
             : this(keyReference, pkSdEcka, null, null, null)
         {
+            
         }
 
         private void ValidateParameters()
@@ -58,8 +60,11 @@ namespace Yubico.YubiKey.Scp
             switch (KeyReference.Id)
             {
                 case ScpKid.Scp11b:
-                    if (OffCardEntityKeyRef != null || OffCardEntityEllipticCurveAgreementPrivateKey != null ||
-                        Certificates.Count > 0)
+                    if (
+                        OffCardEntityKeyReference != null ||
+                        OffCardEntityEllipticCurveAgreementPrivateKey != null ||
+                        Certificates.Count > 0
+                        )
                     {
                         throw new ArgumentException("Cannot provide oceKeyRef, skOceEcka or certificates for SCP11b");
                     }
@@ -67,8 +72,11 @@ namespace Yubico.YubiKey.Scp
                     break;
                 case ScpKid.Scp11a:
                 case ScpKid.Scp11c:
-                    if (OffCardEntityKeyRef == null || OffCardEntityEllipticCurveAgreementPrivateKey == null ||
-                        Certificates.Count == 0)
+                    if (
+                        OffCardEntityKeyReference == null ||
+                        OffCardEntityEllipticCurveAgreementPrivateKey == null ||
+                        Certificates.Count == 0
+                        )
                     {
                         throw new ArgumentException("Must provide oceKeyRef, skOceEcka or certificates for SCP11a/c");
                     }

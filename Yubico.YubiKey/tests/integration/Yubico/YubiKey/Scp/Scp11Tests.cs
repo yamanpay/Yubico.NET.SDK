@@ -14,14 +14,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Xunit;
 using Yubico.YubiKey.TestUtilities;
+// ReSharper disable UnusedVariable
 
 namespace Yubico.YubiKey.Scp.Commands
 {
+    [SuppressMessage("Style", "IDE0059:Unnecessary assignment of a value")]
     public class Scp11Tests
     {
         public Scp11Tests()
@@ -48,7 +52,10 @@ namespace Yubico.YubiKey.Scp.Commands
             }
 
             var leaf = certificateList.Last();
-            var keyParams = new Scp11KeyParameters(keyReference, leaf.PublicKey);
+            var ecDsaPublicKey = leaf.PublicKey.GetECDsaPublicKey()!.ExportParameters(false);
+            var keyParams = new Scp11KeyParameters(keyReference, ecDsaPublicKey);
+            
+            
             
             using (var session = new SecurityDomainSession(Device, keyParams))
             {
@@ -70,7 +77,7 @@ namespace Yubico.YubiKey.Scp.Commands
             Assert.NotEmpty(certificateList);
         }
 
-        private readonly static byte OCE_KID = 0x010;
+        // private readonly static byte OCE_KID = 0x010;
         private IYubiKeyDevice Device { get; set; }
     }
 

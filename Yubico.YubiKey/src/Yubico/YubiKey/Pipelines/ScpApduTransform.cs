@@ -13,13 +13,9 @@
 // limitations under the License.
 
 using System;
-using System.Security.Cryptography;
 using Yubico.Core.Iso7816;
 using Yubico.YubiKey.Cryptography;
 using Yubico.YubiKey.Scp;
-using Yubico.YubiKey.Scp.Commands;
-using Yubico.YubiKey.Scp03;
-using Session = Yubico.YubiKey.Scp.Session;
 
 namespace Yubico.YubiKey.Pipelines
 {
@@ -37,13 +33,15 @@ namespace Yubico.YubiKey.Pipelines
     // broken into two transforms
     internal class ScpApduTransform : IApduTransform, IDisposable
     {
-        private readonly IApduTransform _pipeline;
-        private readonly Session _session;
-
-        private bool _disposed;
-
         public ScpKeyParameters KeyParameters { get; private set; }
-        public StaticKeys StaticKeys => ((Scp03KeyParameters)KeyParameters).StaticKeys;
+
+        private ScpState ScpState =>
+            _scpState ?? throw new InvalidOperationException($"{nameof(Scp.ScpState)} has not been initialized. The Setup method must be called.");
+        
+        private readonly IApduTransform _pipeline;
+        private ScpState? _scpState;
+        // private readonly ScpState _scpState;
+        private bool _disposed;
 
         /// <summary>
         /// Constructs a new pipeline from the given one.
@@ -55,7 +53,6 @@ namespace Yubico.YubiKey.Pipelines
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             KeyParameters = keyParameters ?? throw new ArgumentNullException(nameof(keyParameters));
 
-            _session = new Session();
             _disposed = false;
         }
 
@@ -64,28 +61,39 @@ namespace Yubico.YubiKey.Pipelines
         /// </summary>
         public void Setup()
         {
-            using var rng = CryptographyProviders.RngCreator();
-            Setup(rng);
+            // Setup
+            _pipeline.Setup();
+
+            if (KeyParameters.GetType() == typeof(Scp03KeyParameters))
+            {
+                InitializeScp03((Scp03KeyParameters)KeyParameters);
+            }
+            else if (KeyParameters.GetType() == typeof(Scp11KeyParameters))
+            {
+                InitializeScp11((Scp11KeyParameters)KeyParameters);
+            }
         }
 
-        internal void Setup(RandomNumberGenerator rng)
+        private void InitializeScp11(Scp11KeyParameters keyParameters)
         {
-            _pipeline.Setup();
-            
+            _scpState = Scp11State.InitScp11(_pipeline,(Scp11KeyParameters)keyParameters);
+        }
+
+        private void InitializeScp03(Scp03KeyParameters keyParams)
+        {
             // Generate host challenge
+            using var rng = CryptographyProviders.RngCreator();
             byte[] hostChallenge = new byte[8];
             rng.GetBytes(hostChallenge);
-            
-            // Perform IU/EA handshake
-            PerformInitializeUpdate(hostChallenge);
-            PerformExternalAuthenticate(); // What are you even doing? Not seeing any state being set 
+
+            _scpState = Scp03State.CreateScpState(_pipeline, keyParams, hostChallenge);
         }
 
         public ResponseApdu Invoke(CommandApdu command, Type commandType, Type responseType)
         {
             // Encode command
-            var encodedCommand = _session.EncodeCommand(command);
-            
+            var encodedCommand = ScpState.EncodeCommand(command);
+
             // Pass along the encoded command
             var response = _pipeline.Invoke(encodedCommand, commandType, responseType);
 
@@ -94,38 +102,9 @@ namespace Yubico.YubiKey.Pipelines
             {
                 return response;
             }
-            
+
             // Decode response and return it
-            return _session.DecodeResponse(response);
-        }
-
-        private void PerformInitializeUpdate(byte[] hostChallenge)
-        {
-            var initializeUpdateCommand = _session.BuildInitializeUpdate(
-                KeyParameters.KeyVersionNumber, hostChallenge);
-
-            var initializeUpdateResponseApdu = _pipeline.Invoke(
-                initializeUpdateCommand.CreateCommandApdu(),
-                typeof(InitializeUpdateCommand),
-                typeof(InitializeUpdateResponse));
-
-            var initializeUpdateResponse = initializeUpdateCommand.CreateResponseForApdu(initializeUpdateResponseApdu);
-            initializeUpdateResponse.ThrowIfFailed();
-            _session.LoadInitializeUpdateResponse(initializeUpdateResponse, StaticKeys);
-        }
-
-        private void PerformExternalAuthenticate()
-        {
-            var externalAuthenticateCommand = _session.BuildExternalAuthenticate();
-
-            var externalAuthenticateResponseApdu = _pipeline.Invoke(
-                externalAuthenticateCommand.CreateCommandApdu(),
-                typeof(ExternalAuthenticateCommand),
-                typeof(ExternalAuthenticateResponse));
-
-            var externalAuthenticateResponse = externalAuthenticateCommand.CreateResponseForApdu(externalAuthenticateResponseApdu);
-            externalAuthenticateResponse.ThrowIfFailed();
-            _session.LoadExternalAuthenticateResponse(externalAuthenticateResponse);
+            return ScpState.DecodeResponse(response);
         }
 
         // There is a call to cleanup and a call to Dispose. The cleanup only
@@ -147,7 +126,7 @@ namespace Yubico.YubiKey.Pipelines
                 if (disposing)
                 {
                     // ScpKeys.Dispose(); // TODO
-                    _session.Dispose();
+                    ScpState.Dispose();
 
                     _disposed = true;
                 }

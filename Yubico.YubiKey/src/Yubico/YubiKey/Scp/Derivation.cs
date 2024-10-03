@@ -33,12 +33,12 @@ namespace Yubico.YubiKey.Scp
         // challenges each of which must be 8 bytes.
         // The result (output) will be 8 bytes (outputLenBits = 0x40 = 64 bits)
         // or 16 bytes (outputLen = 0x80 = 128 bits).
-        public static byte[] Derive(
+        public static Memory<byte> Derive(
             byte dataDerivationConstant,
             byte outputLenBits,
-            byte[] kdfKey,
-            byte[] hostChallenge,
-            byte[] cardChallenge)
+            ReadOnlySpan<byte> kdfKey,
+            ReadOnlySpan<byte> hostChallenge,
+            ReadOnlySpan<byte> cardChallenge)
         {
             if (outputLenBits != 0x40 && outputLenBits != 0x80)
             {
@@ -49,16 +49,16 @@ namespace Yubico.YubiKey.Scp
                 throw new SecureChannelException(ExceptionMessages.InvalidChallengeLength);
             }
 
-            byte[] macInp = new byte[32];
+            Span<byte> macInp = stackalloc byte[32];
             macInp[11] = dataDerivationConstant;
 
             // This is the output length.
             macInp[14] = outputLenBits;
             macInp[15] = 1;
-            hostChallenge.CopyTo(macInp, 16);
-            cardChallenge.CopyTo(macInp, 24);
+            hostChallenge.CopyTo(macInp.Slice(16, 8));
+            cardChallenge.CopyTo(macInp.Slice(24, 8));
 
-            byte[] cmac = new byte[16];
+            Span<byte> cmac = stackalloc byte[16];
             using var cmacObj = CryptographyProviders.CmacPrimitivesCreator(CmacBlockCipherAlgorithm.Aes128);
             cmacObj.CmacInit(kdfKey);
             cmacObj.CmacUpdate(macInp);
@@ -66,28 +66,33 @@ namespace Yubico.YubiKey.Scp
 
             if (outputLenBits == 0x80) //Output is a 128 bit key?
             {
-                return cmac;
+                return cmac.ToArray();
             }
+
             // Output is a cryptogram
             byte[] smallerResult = new byte[8];
-            Array.Copy(cmac, 0, smallerResult, 0, 8);
-            CryptographicOperations.ZeroMemory(cmac.AsSpan());
+            cmac[..8].CopyTo(smallerResult);
+
+            CryptographicOperations.ZeroMemory(cmac);
+
             return smallerResult;
         }
 
-        public static byte[] DeriveCryptogram(
+        public static Memory<byte> DeriveCryptogram(
             byte dataDerivationConstant,
-            byte[] key,
-            byte[] hostChallenge,
-            byte[] cardChallenge) => Derive(dataDerivationConstant, 0x40, key, hostChallenge, cardChallenge);
+            ReadOnlySpan<byte> key,
+            ReadOnlySpan<byte> hostChallenge,
+            ReadOnlySpan<byte> cardChallenge) => Derive(dataDerivationConstant, 0x40, key, hostChallenge, cardChallenge);
 
         public static SessionKeys DeriveSessionKeysFromStaticKeys(
             StaticKeys staticKeys,
-            byte[] hostChallenge,
-            byte[] cardChallenge)
+            ReadOnlySpan<byte> hostChallenge,
+            ReadOnlySpan<byte> cardChallenge)
         {
-            byte[] macKey = staticKeys.ChannelMacKey.ToArray();
-            byte[] encKey = staticKeys.ChannelEncryptionKey.ToArray();
+            Span<byte> macKey = stackalloc byte[staticKeys.ChannelMacKey.Length];
+            Span<byte> encKey = stackalloc byte[staticKeys.ChannelEncryptionKey.Length];
+            staticKeys.ChannelMacKey.Span.CopyTo(macKey);
+            staticKeys.ChannelEncryptionKey.Span.CopyTo(encKey);
 
             try
             {
@@ -101,16 +106,16 @@ namespace Yubico.YubiKey.Scp
                 // is not exactly 8 bytes. In that case, the first call would
                 // fail before generating a result, so there will be no data to
                 // overwrite.
-                byte[] SMAC = Derive(DDC_SMAC, 0x80, macKey, hostChallenge, cardChallenge);
-                byte[] SENC = Derive(DDC_SENC, 0x80, encKey, hostChallenge, cardChallenge);
-                byte[] SRMAC = Derive(DDC_SRMAC, 0x80, macKey, hostChallenge, cardChallenge);
+                var SMAC = Derive(DDC_SMAC, 0x80, macKey, hostChallenge, cardChallenge);
+                var SENC = Derive(DDC_SENC, 0x80, encKey, hostChallenge, cardChallenge);
+                var SRMAC = Derive(DDC_SRMAC, 0x80, macKey, hostChallenge, cardChallenge);
 
                 return new SessionKeys(SMAC, SENC, SRMAC);
             }
             finally
             {
-                CryptographicOperations.ZeroMemory(macKey.AsSpan());
-                CryptographicOperations.ZeroMemory(encKey.AsSpan());
+                CryptographicOperations.ZeroMemory(macKey);
+                CryptographicOperations.ZeroMemory(encKey);
             }
         }
     }

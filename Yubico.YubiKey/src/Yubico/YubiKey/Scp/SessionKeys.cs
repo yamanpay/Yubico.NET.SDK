@@ -19,32 +19,25 @@ namespace Yubico.YubiKey.Scp
 {
     internal class SessionKeys : IDisposable
     {
-        private readonly byte[] _sessionMacKey;
-        private readonly byte[] _sessionEncryptionKey;
-        private readonly byte[] _sessionRmacKey;
+        public ReadOnlyMemory<byte> GetMacKey => _macKey;
+        public ReadOnlyMemory<byte> GetEncKey => _encryptionKey;
+        public ReadOnlyMemory<byte> GetRmacKey => _rmacKey;
 
+        private readonly Memory<byte> _macKey;
+        private readonly Memory<byte> _encryptionKey;
+        private readonly Memory<byte> _rmacKey;
         private bool _disposed;
 
-        // This copies a reference to the input keys and will clear them when
-        // done.
-        // Callers should not do anything with the buffers after a successful
-        // instantiation.
-        public SessionKeys(byte[] sessionMacKey, byte[] sessionEncryptionKey, byte[] sessionRmacKey)
+        public SessionKeys(
+            Memory<byte> sessionMacKey, 
+            Memory<byte> sessionEncryptionKey, 
+            Memory<byte> sessionRmacKey)
         {
-            _sessionMacKey = sessionMacKey;
-            _sessionEncryptionKey = sessionEncryptionKey;
-            _sessionRmacKey = sessionRmacKey;
+            _macKey = sessionMacKey;
+            _encryptionKey = sessionEncryptionKey;
+            _rmacKey = sessionRmacKey;
             _disposed = false;
         }
-
-        // Return a reference to the byte array containing the session Mac Key.
-        public byte[] GetSessionMacKey() => _sessionMacKey;
-
-        // Return a reference to the byte array containing the session Enc Key.
-        public byte[] GetSessionEncKey() => _sessionEncryptionKey;
-
-        // Return a reference to the byte array containing the session Rmac Key.
-        public byte[] GetSessionRmacKey() => _sessionRmacKey;
 
         public void Dispose()
         {
@@ -59,9 +52,9 @@ namespace Yubico.YubiKey.Scp
             {
                 if (disposing)
                 {
-                    CryptographicOperations.ZeroMemory(_sessionMacKey.AsSpan());
-                    CryptographicOperations.ZeroMemory(_sessionEncryptionKey.AsSpan());
-                    CryptographicOperations.ZeroMemory(_sessionRmacKey.AsSpan());
+                    CryptographicOperations.ZeroMemory(_macKey.Span);
+                    CryptographicOperations.ZeroMemory(_encryptionKey.Span);
+                    CryptographicOperations.ZeroMemory(_rmacKey.Span);
 
                     _disposed = true;
                 }
