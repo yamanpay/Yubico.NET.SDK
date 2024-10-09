@@ -15,12 +15,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using Yubico.Core.Cryptography;
 using Yubico.Core.Iso7816;
 using Yubico.Core.Tlv;
 using Yubico.YubiKey.Cryptography;
+using Yubico.YubiKey.Scp.Commands;
 using Yubico.YubiKit.Core.Util;
 
 namespace Yubico.YubiKey.Scp
@@ -32,42 +32,28 @@ namespace Yubico.YubiKey.Scp
         {
         }
 
-        internal static Scp11State InitScp11(
+        internal static Scp11State CreateScpState(
             IApduTransform pipeline,
             Scp11KeyParameters keyParams)
         {
-            // const byte INS_PERFORM_SECURITY_OPERATION = 0x2A;
-            const byte InsInternalAuthenticate = 0x88;
-            const byte InsExternalAuthenticate = 0x82;
-
-            // GPC v2.3 Amendment F (SCP11) v1.4 §7.1.1
-            byte parameters;
-            switch (keyParams.KeyReference.Id)
+            // Handle Scp11a and Scp11c
+            if (keyParams.KeyReference.Id == ScpKid.Scp11a || keyParams.KeyReference.Id == ScpKid.Scp11c)
             {
-                case ScpKid.Scp11a:
-                    parameters = 0b01;
-                    break;
-                case ScpKid.Scp11b:
-                    parameters = 0b00;
-                    break;
-                case ScpKid.Scp11c:
-                    parameters = 0b11;
-                    break;
-                default:
-                    throw new ArgumentException("Invalid SCP11 KID");
+                PerformSecurityOperation(pipeline, keyParams);
             }
 
             byte[] keyUsage = { 0x3C }; // AUTHENTICATED | C_MAC | C_DECRYPTION | R_MAC | R_ENCRYPTION
             byte[] keyType = { 0x88 }; // AES
             byte[] keyLen = { 16 }; // 128-bit
+            byte[] keyScpIdentifier = { GetScpIdentifier(keyParams.KeyReference) };
 
             // Host ephemeral key
-            var ecdh = CryptographyProviders.EcdhPrimitivesCreator();
-            var pk = keyParams.SecurityDomainEllipticCurveKeyAgreementKeyPublicKey;
-            var curve = pk.Curve;
-            var ephemeralOceEcka = ecdh.GenerateKeyPair(curve);
+            var ecdhObject = CryptographyProviders.EcdhPrimitivesCreator();
+            var securityDomainPublicKey = keyParams.SecurityDomainEllipticCurveKeyAgreementKeyPublicKey;
+            var securityDomainPublicKeyCurve = securityDomainPublicKey.Curve;
+            var ephemeralOceEcka = ecdhObject.GenerateKeyPair(securityDomainPublicKeyCurve);
 
-            var encodedPointOceEcka = new byte[65];
+            byte[] encodedPointOceEcka = new byte[65];
             encodedPointOceEcka[0] = 0x04;
             ephemeralOceEcka.Q.X.CopyTo(encodedPointOceEcka, 1);
             ephemeralOceEcka.Q.Y.CopyTo(encodedPointOceEcka, 33);
@@ -80,7 +66,7 @@ namespace Yubico.YubiKey.Scp
                         0xA6, TlvObjects.EncodeList(
                             new List<TlvObject>
                             {
-                                new TlvObject(0x90, new byte[] { 0x11, parameters }),
+                                new TlvObject(0x90, keyScpIdentifier),
                                 new TlvObject(0x95, keyUsage),
                                 new TlvObject(0x80, keyType),
                                 new TlvObject(0x81, keyLen)
@@ -89,23 +75,20 @@ namespace Yubico.YubiKey.Scp
                 });
 
             var skOceEcka =
-                keyParams.OffCardEntityEllipticCurveAgreementPrivateKey ??
-                ephemeralOceEcka; // This is for SCP11A and C. 
+                keyParams.OffCardEntityEllipticCurveAgreementPrivateKey ?? // This is for SCP11A and C. 
+                ephemeralOceEcka;
 
-            byte ins = keyParams.KeyReference.Id == ScpKid.Scp11b
-                ? InsInternalAuthenticate
-                : InsExternalAuthenticate; //TODO Make commands to follow NETSDK
+            var command = keyParams.KeyReference.Id == ScpKid.Scp11b
+                ? new InternalAuthenticateCommand(
+                    keyParams.KeyReference.VersionNumber, keyParams.KeyReference.Id,
+                    data) as IYubiKeyCommand<IYubiKeyResponse>
+                : new ExternalAuthenticateCommand(
+                    keyParams.KeyReference.VersionNumber, keyParams.KeyReference.Id,
+                    data) as IYubiKeyCommand<IYubiKeyResponse>;
 
-            var cmd = new CommandApdu
-            {
-                Cla = 0x80,
-                Ins = ins,
-                P1 = keyParams.KeyReference.VersionNumber,
-                P2 = keyParams.KeyReference.Id,
-                Data = data
-            };
+            var response = pipeline.Invoke(
+                command.CreateCommandApdu(), command.GetType(), typeof(IYubiKeyResponse));
 
-            var response = pipeline.Invoke(cmd, default!, default!); //TODO check args Make commands to follow NETSDK
             if (response.SW != SWConstants.Success)
             {
                 throw new ApduException(); //todo
@@ -118,7 +101,7 @@ namespace Yubico.YubiKey.Scp
 
             var epkSdEcka = new ECParameters // Yubikey generated key agreement key 
             {
-                Curve = curve,
+                Curve = securityDomainPublicKeyCurve,
                 Q = new ECPoint
                 {
                     X = epkSdEckaEncodedPoint.Span[1..33].ToArray(),
@@ -126,52 +109,144 @@ namespace Yubico.YubiKey.Scp
                 }
             };
 
+            var (encryptionKey, macKey, rMacKey, dekKey)
+                = GetX963KDFKeyAgreementKeys(
+                    ecdhObject,
+                    epkSdEcka,
+                    ephemeralOceEcka,
+                    securityDomainPublicKey,
+                    skOceEcka,
+                    data,
+                    epkSdEckaTlv,
+                    keyUsage,
+                    keyType,
+                    keyLen,
+                    receipt);
+
+            var sessionKeys = new SessionKeys(
+                macKey,
+                encryptionKey,
+                rMacKey,
+                dekKey
+                );
+
+            return new Scp11State(sessionKeys, receipt.ToArray());
+        }
+
+        private static (Memory<byte> encryptionKey, Memory<byte> macKey, Memory<byte> rMacKey, Memory<byte> dekKey)
+            GetX963KDFKeyAgreementKeys(
+            IEcdhPrimitives ecdhObject,
+            ECParameters epkSdEcka,
+            ECParameters ephemeralOceEcka,
+            ECParameters securityDomainPublicKey,
+            ECParameters skOceEcka,
+            byte[] data,
+            TlvObject epkSdEckaTlv,
+            byte[] keyUsage,
+            byte[] keyType,
+            byte[] keyLen,
+            ReadOnlyMemory<byte> receipt)
+        {
+            byte[] keyAgreementFirst = ecdhObject.ComputeSharedSecret(epkSdEcka, ephemeralOceEcka.D);
+            byte[] keyAgreementSecond = ecdhObject.ComputeSharedSecret(securityDomainPublicKey, skOceEcka.D);
+
+            byte[] keyMaterial = MergeArrays(keyAgreementFirst, keyAgreementSecond);
             byte[] keyAgreementData = MergeArrays(data, epkSdEckaTlv.GetBytes());
             byte[] sharedInfo = MergeArrays(keyUsage, keyType, keyLen);
-            byte[] ka1 = ecdh.ComputeSharedSecret(epkSdEcka, ephemeralOceEcka.D);
-            byte[] ka2 = ecdh.ComputeSharedSecret(pk, ephemeralOceEcka.D); //skOceEcka
-            byte[] keyMaterial = MergeArrays(ka1, ka2);
 
-            // Do X9.63 KDF
-            var keys = new List<byte[]>();
-            byte counter = 0;
-            for (int i = 0; i < 3; i++)
+            const int keyCount = 4;
+            var keys = new List<byte[]>(keyCount);
+            byte counter = 1;
+            for (int i = 0; i <= keyCount; i++)
             {
                 using var hash = CryptographyProviders.Sha256Creator();
 
                 _ = hash.TransformBlock(keyMaterial, 0, keyMaterial.Length, null, 0);
-                byte[] byteArray = { 0, 0, 0, ++counter };
-                _ = hash.TransformBlock(byteArray, 0, 4, null, 0);
+                _ = hash.TransformBlock(new byte[] { 0, 0, 0, counter }, 0, 4, null, 0);
                 _ = hash.TransformFinalBlock(sharedInfo, 0, sharedInfo.Length);
 
                 Span<byte> digest = hash.Hash;
-                keys.Add(digest[..16].ToArray()); // TODO Should be AES keys, find C# equivalent
+                keys.Add(digest[..16].ToArray());
                 keys.Add(digest[16..].ToArray());
 
+                ++counter;
                 CryptographicOperations.ZeroMemory(digest);
             }
-
+            
+            // Get keys
+            byte[] encryptionKey = keys[0];
+            byte[] macKey = keys[1];
+            byte[] rmacKey = keys[2];
+            byte[] dekKey = keys[3];
+            
             // Do AES CMAC 
             using var cmacObj = CryptographyProviders.CmacPrimitivesCreator(CmacBlockCipherAlgorithm.Aes128);
-            byte[] key = keys[0];
-            Span<byte> genReceipt = new byte[16];
-            cmacObj.CmacInit(key);
+            Span<byte> genReceipt = stackalloc byte[16];
+            cmacObj.CmacInit(encryptionKey);
             cmacObj.CmacUpdate(keyAgreementData);
             cmacObj.CmacFinal(genReceipt);
 
-            if (!CryptographicOperations.FixedTimeEquals(genReceipt, receipt.Span)) // They are not equal
+            if (!CryptographicOperations.FixedTimeEquals(genReceipt, receipt.Span))
             {
-                throw new Exception("Receipt does not match"); //TODO better excp
+                throw new SecureChannelException(ExceptionMessages.KeyAgreementReceiptMissmatch);
             }
 
-            var sessionKeys = new SessionKeys(
-                keys[2].AsMemory(),
-                keys[1].AsMemory(),
-                keys[3].AsMemory()
-                //keys[4].AsMemory() dek?
-                );
+            return (encryptionKey, macKey, rmacKey, dekKey);
+        }
 
-            return new Scp11State(sessionKeys, receipt.ToArray());
+        /// <summary>
+        /// Gets the standardized SCP identifier for the given key reference.
+        /// Global Platform Secure Channel Protocol 11 Card Specification v2.3 – Amendment F § 7.1.1
+        /// </summary>
+        private static byte GetScpIdentifier(KeyReference keyReference) =>
+            keyReference.Id switch
+            {
+                ScpKid.Scp11a => 0b1,
+                ScpKid.Scp11b => 0b0,
+                ScpKid.Scp11c => 0b11,
+                _ => throw new ArgumentException("Invalid SCP11 KID")
+            };
+
+        private static void PerformSecurityOperation(IApduTransform pipeline, Scp11KeyParameters keyParams)
+        {
+            // GPC v2.3 Amendment F (SCP11) v1.4 §7.5
+            if (keyParams.OffCardEntityEllipticCurveAgreementPrivateKey == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(keyParams.OffCardEntityEllipticCurveAgreementPrivateKey),
+                    "SCP11a and SCP11c require a private key");
+            }
+
+            int n = keyParams.Certificates.Count - 1;
+            if (n < 0)
+            {
+                throw new ArgumentException(
+                    "SCP11a and SCP11c require a certificate chain", nameof(keyParams.Certificates));
+            }
+
+            var oceRef = keyParams.OffCardEntityKeyReference ?? new KeyReference(0, 0);
+            for (int i = 0; i <= n; i++)
+            {
+                byte[] certificates = keyParams.Certificates[i].RawData;
+                byte oceRefPadded = (byte)(oceRef.Id | (i < n ? 0x80 : 0x00)); // Is this a good name?
+
+                var securityOperationCommand = new SecurityOperationCommand(
+                    oceRef.VersionNumber,
+                    oceRefPadded,
+                    certificates);
+
+                // Send payload
+                var responseSecurityOperation = pipeline.Invoke(
+                    securityOperationCommand.CreateCommandApdu(),
+                    typeof(SecurityOperationCommand),
+                    typeof(SecurityOperationResponse));
+
+                if (responseSecurityOperation.SW != SWConstants.Success)
+                {
+                    throw new SecureChannelException(
+                        $"Security operation failed. Status: {responseSecurityOperation.SW:X4}");
+                }
+            }
         }
 
         private static byte[] MergeArrays(params ReadOnlyMemory<byte>[] values)

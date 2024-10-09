@@ -22,10 +22,10 @@ namespace Yubico.YubiKey.Scp.Commands
     /// </summary>
     internal class InitializeUpdateCommand : IYubiKeyCommand<InitializeUpdateResponse>
     {
-        public YubiKeyApplication Application => YubiKeyApplication.InterIndustry;
+        public YubiKeyApplication Application => YubiKeyApplication.SecurityDomain;
         private const byte GpInitializeUpdateCla = 0x84;
         private const byte GpInitializeUpdateIns = 0x50;
-        private readonly byte[] _challenge;
+        private readonly ReadOnlyMemory<byte> _hostChallenge;
         private readonly int _keyVersionNumber;
 
         /// <summary>
@@ -35,15 +35,15 @@ namespace Yubico.YubiKey.Scp.Commands
         /// Clients should not generally build this manually. See <see cref="YubiKey.Pipelines.Scp03ApduTransform"/> for more.
         /// </remarks>
         /// <param name="keyVersionNumber">Which key set to use.</param>
-        /// <param name="challenge">An 8-byte randomly-generated challenge from the host to the device.</param>
-        public InitializeUpdateCommand(int keyVersionNumber, byte[] challenge)
+        /// <param name="hostChallenge">An 8-byte randomly-generated challenge from the host to the device.</param>
+        public InitializeUpdateCommand(int keyVersionNumber, ReadOnlyMemory<byte> hostChallenge)
         {
-            if (challenge is null)
+            if (hostChallenge.Length != 8)
             {
-                throw new ArgumentNullException(nameof(challenge));
+                throw new ArgumentException("Invalid size, must be 8 bytes", nameof(_hostChallenge)); //TODO make localised string
             }
-
-            _challenge = challenge;
+            
+            _hostChallenge = hostChallenge;
             _keyVersionNumber = keyVersionNumber;
         }
 
@@ -52,7 +52,7 @@ namespace Yubico.YubiKey.Scp.Commands
             Cla = GpInitializeUpdateCla,
             Ins = GpInitializeUpdateIns,
             P1 = (byte)_keyVersionNumber,
-            Data = _challenge
+            Data = _hostChallenge
         };
         public InitializeUpdateResponse CreateResponseForApdu(ResponseApdu responseApdu) => new InitializeUpdateResponse(responseApdu);
     }

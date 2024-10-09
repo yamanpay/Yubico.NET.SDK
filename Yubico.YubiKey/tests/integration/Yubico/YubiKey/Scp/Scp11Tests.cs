@@ -23,7 +23,7 @@ using Xunit;
 using Yubico.YubiKey.TestUtilities;
 // ReSharper disable UnusedVariable
 
-namespace Yubico.YubiKey.Scp.Commands
+namespace Yubico.YubiKey.Scp
 {
     [SuppressMessage("Style", "IDE0059:Unnecessary assignment of a value")]
     public class Scp11Tests
@@ -32,7 +32,7 @@ namespace Yubico.YubiKey.Scp.Commands
         {
             Device = IntegrationTestDeviceEnumeration.GetTestDevice(
                 Transport.SmartCard,
-                minimumFirmwareVersion: FirmwareVersion.V5_3_0);
+                minimumFirmwareVersion: FirmwareVersion.V5_7_2);
 
             using var session = new SecurityDomainSession(Device);
             session.Reset();
@@ -41,11 +41,8 @@ namespace Yubico.YubiKey.Scp.Commands
         [Fact]
         public void Scp11b_Authenticate_Succeeds()
         {
-            Skip.IfNot(Device.FirmwareVersion >= FirmwareVersion.V5_7_2);
-
             IReadOnlyCollection<X509Certificate2> certificateList;
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
-
             using (var session = new SecurityDomainSession(Device))
             {
                 certificateList = session.GetCertificateBundle(keyReference);
@@ -55,20 +52,29 @@ namespace Yubico.YubiKey.Scp.Commands
             var ecDsaPublicKey = leaf.PublicKey.GetECDsaPublicKey()!.ExportParameters(false);
             var keyParams = new Scp11KeyParameters(keyReference, ecDsaPublicKey);
             
-            
-            
             using (var session = new SecurityDomainSession(Device, keyParams))
             {
-                // TODO do something that verifies that it works, above code wont work because we dont handle Scp11 yet
                 session.GetKeyInformation();
             }
         }
 
         [Fact]
+        public void Scp11b_Import_Succeeds()
+        {
+            var keyReference = new KeyReference(ScpKid.Scp11b, 0x2);
+
+            using (var session = new SecurityDomainSession(Device))
+            {
+                var ecDsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+                // session.PutKeySet(keyReference);
+                session.GetKeyInformation();
+            }
+        }
+
+
+        [Fact]
         public void TestGetCertificateBundle()
         {
-            Skip.IfNot(Device.FirmwareVersion >= FirmwareVersion.V5_7_2);
-
             using var session = new SecurityDomainSession(Device);
 
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
@@ -77,9 +83,152 @@ namespace Yubico.YubiKey.Scp.Commands
             Assert.NotEmpty(certificateList);
         }
 
+        
+        [Fact]
+        public void GenerateEcKey_Succeeds()
+        {
+            using var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey);
+           
+            var keyReference = new KeyReference(ScpKid.Scp11a, 0x3);
+            
+            // Generate a new EC key
+            ECParameters generatedKey = session.GenerateEcKey(keyReference, 0);
+
+            // Verify the generated key
+            Assert.NotNull(generatedKey.Q.X);
+            Assert.NotNull(generatedKey.Q.Y);
+            Assert.Equal(32, generatedKey.Q.X.Length); // P-256 curve should have 32-byte X and Y coordinates
+            Assert.Equal(32, generatedKey.Q.Y.Length);
+            Assert.Equal(ECCurve.NamedCurves.nistP256.Oid.Value, generatedKey.Curve.Oid.Value);
+
+            using (ECDsa ecdsa = ECDsa.Create(generatedKey))
+            {
+                Assert.NotNull(ecdsa);
+            }
+        }
+
+        [Fact]
+        public void Scp11a_Authenticate_Succeeds()
+        {
+
+            byte kvn = 0x03;
+            var keyReference = new KeyReference(ScpKid.Scp11a, kvn);
+
+            Scp11KeyParameters keyParams;
+            using (var session = new SecurityDomainSession(Device))
+            {
+                keyParams = LoadKeys(session, ScpKid.Scp11a, kvn);
+            }
+
+            using (var session = new SecurityDomainSession(Device, keyParams))
+            {
+                session.DeleteKeySet(keyReference.VersionNumber, false);
+            }
+        }
+        
+
+        // private Scp11KeyParameters LoadKeys(SecurityDomainSession session, byte scpKid, byte kvn)
+        // {
+        //     var sessionRef = new KeyReference(scpKid, kvn);
+        //     var oceRef = new KeyReference(OceKid, kvn);
+
+        //     PublicKeyValues publicKeyValues = session.GenerateEcKey(sessionRef, 0);
+
+        //     var oceCerts = GetOceCertificates(OceCerts);
+        //     if (oceCerts.Ca == null)
+        //     {
+        //         throw new InvalidOperationException("Missing CA certificate");
+        //     }
+        //     session.PutKey(oceRef, PublicKeyValues.FromPublicKey(oceCerts.Ca.GetPublicKey()), 0);
+
+        //     byte[] ski = GetSki(oceCerts.Ca);
+        //     if (ski == null)
+        //     {
+        //         throw new InvalidOperationException("CA certificate missing Subject Key Identifier");
+        //     }
+        //     session.StoreCaIssuer(oceRef, ski);
+
+        //     using (var keyStore = new X509Store(StoreName.My, StoreLocation.CurrentUser))
+        //     {
+        //         keyStore.Open(OpenFlags.ReadOnly);
+
+        //         // Assuming the certificate and private key are installed in the certificate store
+        //         var cert = keyStore.Certificates.Find(X509FindType.FindBySubjectName, "YourCertSubjectName", false)[0];
+        //         var privateKey = (RSACng)cert.PrivateKey;
+
+        //         var certChain = new List<X509Certificate2> { cert };
+        //         // Add any intermediate certificates to the chain if necessary
+
+        //         return new Scp11KeyParameters(
+        //             sessionRef,
+        //             publicKeyValues.ToPublicKey(),
+        //             oceRef,
+        //             privateKey,
+        //             certChain
+        //         );
+        //     }
+        // }
+
+        // private ScpCertificates GetOceCertificates(byte[] pem)
+        // {
+        //     try
+        //     {
+        //         var certificates = new List<X509Certificate2>();
+
+        //         // Convert PEM to a string
+        //         string pemString = System.Text.Encoding.UTF8.GetString(pem);
+
+        //         // Split the PEM string into individual certificates
+        //         string[] pemCerts = pemString.Split(
+        //             new[] { "-----BEGIN CERTIFICATE-----", "-----END CERTIFICATE-----" },
+        //             StringSplitOptions.RemoveEmptyEntries
+        //         );
+
+        //         foreach (string certString in pemCerts)
+        //         {
+        //             if (!string.IsNullOrWhiteSpace(certString))
+        //             {
+        //                 // Remove any whitespace and convert to byte array
+        //                 byte[] certData = Convert.FromBase64String(certString.Trim());
+        //                 var cert = new X509Certificate2(certData);
+        //                 certificates.Add(cert);
+        //             }
+        //         }
+
+        //         return ScpCertificates.From(certificates);
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         throw new InvalidOperationException("Failed to parse PEM certificates", ex);
+        //     }
+        // }
+
+        private byte[] GetSki(X509Certificate2 certificate)
+        {
+            var extension = certificate.Extensions["2.5.29.14"];
+            if (!(extension is X509SubjectKeyIdentifierExtension skiExtension))
+            {
+                throw new InvalidOperationException("Invalid Subject Key Identifier extension");
+            }
+
+            byte[] rawData = skiExtension.RawData;
+            if (rawData == null || rawData.Length == 0)
+            {
+                throw new InvalidOperationException("Missing Subject Key Identifier");
+            }
+
+            // The raw data is already in the format we need, so we can return it directly
+            return rawData;
+        }
+
         // private readonly static byte OCE_KID = 0x010;
         private IYubiKeyDevice Device { get; set; }
     }
+
+
+    
+
+
 
     class Scp11TestData
     {

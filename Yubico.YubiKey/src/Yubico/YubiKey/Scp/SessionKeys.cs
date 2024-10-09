@@ -19,23 +19,40 @@ namespace Yubico.YubiKey.Scp
 {
     internal class SessionKeys : IDisposable
     {
-        public ReadOnlyMemory<byte> GetMacKey => _macKey;
-        public ReadOnlyMemory<byte> GetEncKey => _encryptionKey;
-        public ReadOnlyMemory<byte> GetRmacKey => _rmacKey;
+        /// <summary>
+        /// Gets the session MAC key.
+        /// </summary>
+        public ReadOnlyMemory<byte> MacKey => _macKey;
+        /// <summary>
+        /// Gets the session encryption key.    
+        /// </summary>
+        public ReadOnlyMemory<byte> EncKey => _encryptionKey;
+        /// <summary>
+        /// Gets the session RMAC key.
+        /// </summary>
+        public ReadOnlyMemory<byte> RmacKey => _rmacKey;
+        /// <summary>
+        /// Gets the session data encryption key.
+        /// </summary>
+        public ReadOnlyMemory<byte>? DataEncryptionKey => _dataEncryptionKey;
 
         private readonly Memory<byte> _macKey;
         private readonly Memory<byte> _encryptionKey;
         private readonly Memory<byte> _rmacKey;
+        private readonly Memory<byte>? _dataEncryptionKey;
         private bool _disposed;
 
         public SessionKeys(
-            Memory<byte> sessionMacKey, 
-            Memory<byte> sessionEncryptionKey, 
-            Memory<byte> sessionRmacKey)
+            Memory<byte> macKey, 
+            Memory<byte> encryptionKey, 
+            Memory<byte> rmacKey,
+            Memory<byte>? dataEncryptionKey = null)
         {
-            _macKey = sessionMacKey;
-            _encryptionKey = sessionEncryptionKey;
-            _rmacKey = sessionRmacKey;
+            _macKey = macKey;
+            _encryptionKey = encryptionKey;
+            _rmacKey = rmacKey;
+            _dataEncryptionKey = dataEncryptionKey;
+            
             _disposed = false;
         }
 
@@ -48,17 +65,22 @@ namespace Yubico.YubiKey.Scp
         // Overwrite the memory of the keys
         protected virtual void Dispose(bool disposing)
         {
-            if (!_disposed)
+            if (_disposed)
             {
-                if (disposing)
-                {
-                    CryptographicOperations.ZeroMemory(_macKey.Span);
-                    CryptographicOperations.ZeroMemory(_encryptionKey.Span);
-                    CryptographicOperations.ZeroMemory(_rmacKey.Span);
-
-                    _disposed = true;
-                }
+                return;
             }
+
+            if (!disposing)
+            {
+                return;
+            }
+
+            CryptographicOperations.ZeroMemory(_macKey.Span);
+            CryptographicOperations.ZeroMemory(_encryptionKey.Span);
+            CryptographicOperations.ZeroMemory(_rmacKey.Span);
+            CryptographicOperations.ZeroMemory(_dataEncryptionKey.GetValueOrDefault().Span);
+
+            _disposed = true;
         }
     }
 }

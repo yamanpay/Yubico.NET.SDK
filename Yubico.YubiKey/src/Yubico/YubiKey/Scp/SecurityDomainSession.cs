@@ -86,15 +86,15 @@ namespace Yubico.YubiKey.Scp
     public sealed class SecurityDomainSession : IDisposable
     {
         private readonly IYubiKeyDevice _yubiKey;
-        private bool _disposed;
         private readonly ILogger _log = Log.GetLogger<SecurityDomainSession>();
+        private bool _disposed;
 
         /// <summary>
         /// The object that represents the connection to the YubiKey. Most
         /// applications will ignore this, but it can be used to call Commands
         /// directly.
         /// </summary>
-        public IScpYubiKeyConnection? Connection { get; private set; }
+        private IScpYubiKeyConnection? Connection { get; }
 
         // The default constructor explicitly defined. We don't want it to be
         // used.
@@ -140,8 +140,8 @@ namespace Yubico.YubiKey.Scp
         /// </exception>
         public SecurityDomainSession(IYubiKeyDevice yubiKey, ScpKeyParameters scpKeys)
         {
-            _yubiKey = yubiKey;
             _log.LogInformation("Create a new instance of ScpSession.");
+
             if (yubiKey is null)
             {
                 throw new ArgumentNullException(nameof(yubiKey));
@@ -152,13 +152,15 @@ namespace Yubico.YubiKey.Scp
                 throw new ArgumentNullException(nameof(scpKeys));
             }
 
+            _yubiKey = yubiKey;
             Connection = yubiKey.ConnectScp(YubiKeyApplication.SecurityDomain, scpKeys);
         }
 
         /// <summary>
-        /// Create an instance of <see cref="SecurityDomainSession"/>, the object that
+        /// Create an unauthenticated instance of <see cref="SecurityDomainSession"/>, the object that
         /// represents SCP on the YubiKey.
         /// </summary>
+        /// <remarks>Sessions created from this constructor will not be able to perform operations which require authentication</remarks>
         /// <param name="yubiKey">
         /// The object that represents the actual YubiKey which will perform the
         /// operations.
@@ -166,16 +168,10 @@ namespace Yubico.YubiKey.Scp
         /// <exception cref="ArgumentNullException">
         /// The <c>yubiKey</c> or <c>scpKeys</c> argument is null.
         /// </exception>
-        public SecurityDomainSession(IYubiKeyDevice yubiKey) //TODO Explain that it is not authenticated, you might want to block certain commands that require auth
+        public SecurityDomainSession(IYubiKeyDevice yubiKey)
         {
-            _yubiKey = yubiKey;
             _log.LogInformation("Create a new instance of ScpSession.");
-            if (yubiKey is null)
-            {
-                throw new ArgumentNullException(nameof(yubiKey));
-            }
-
-            // Must be able to initiate a session without the connection
+            _yubiKey = yubiKey ?? throw new ArgumentNullException(nameof(yubiKey));
         }
 
         /// <summary>
@@ -347,26 +343,76 @@ namespace Yubico.YubiKey.Scp
             }
         }
 
-        /**
-         * Perform a factory reset of the Security Domain.
-         * This will remove all keys and associated data, as well as restore the default SCP03 static keys,
-         * and generate a new (attestable) SCP11b key.
-         */
+        /// <summary>
+        /// Generate a new SCP11 key.
+        /// Requires off-card entity verification.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// GlobalPlatform has no command to generate key pairs on the card itself. This is a
+        /// Yubico extension that tries to mimic the format of the GPC PUT KEY
+        /// command.
+        /// </para>
+        /// </remarks>
+        /// <param name="keyRef">The KID-KVN pair to assign the new key</param>
+        /// <param name="replaceKvn">0 to generate a new keypair, non-zero to replace an existing KVN</param>
+        /// <returns>The public key from the generated key pair</returns>
+        public ECParameters GenerateEcKey(KeyReference keyRef, byte replaceKvn)
+        {
+            var connection = Connection ?? throw new InvalidOperationException("No connection initialized. Use the other constructor");
+
+            _log.LogDebug("Generating new key for {KeyRef}{ReplaceMessage}",
+                keyRef,
+                replaceKvn == 0 
+                    ? string.Empty 
+                    : $", replacing KVN=0x{replaceKvn:X2}");
+
+            const byte KeyTypeEccKeyParams = 0xF0;
+            const byte KeyTypeEccPublicKey = 0xB0;
+
+            var paramsTlv = new TlvObject(KeyTypeEccKeyParams, new byte[] { 0 }).GetBytes();
+            byte[] commandData = new byte[paramsTlv.Length + 1];
+            commandData[0] = keyRef.VersionNumber;
+            paramsTlv.CopyTo(commandData.AsMemory(1));
+
+            var generateKeyCommand = new GenerateEcKeyCommand(replaceKvn, keyRef.Id, commandData);
+            var response = connection.SendCommand(generateKeyCommand);
+            if (response.Status != ResponseStatus.Success)
+            {
+                throw new SecureChannelException(response.StatusMessage);
+            }
+
+            var tlvReader = new TlvReader(response.GetData());
+            var encodedPoint = tlvReader.ReadValue(KeyTypeEccPublicKey).Span;
+            return new ECParameters
+            {
+                Curve = ECCurve.NamedCurves.nistP256,
+                Q = new ECPoint
+                {
+                    X = encodedPoint.Slice(1, 32).ToArray(),
+                    Y = encodedPoint.Slice(33, 32).ToArray()
+                }
+            };
+        }
+
+        /// <summary>
+        /// Perform a factory reset of the Security Domain.
+        /// This will remove all keys and associated data, as well as restore the default SCP03 static keys,
+        /// and generate a new (attestable) SCP11b key.
+        /// </summary>
         public void Reset()
         {
             _log.LogDebug("Resetting all SCP keys");
 
             var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
 
-            // Reset is done by blocking all available keys
             const byte INS_INITIALIZE_UPDATE = 0x50;
             const byte INS_EXTERNAL_AUTHENTICATE = 0x82;
             const byte INS_INTERNAL_AUTHENTICATE = 0x88;
             const byte INS_PERFORM_SECURITY_OPERATION = 0x2A;
 
-            byte[] data = new byte[8];
             var keys = GetKeyInformation().Keys;
-            foreach (var keyRef in keys)
+            foreach (var keyRef in keys) // Reset is done by blocking all available keys
             {
                 byte ins;
                 var overridenKeyRef = keyRef;
@@ -398,7 +444,7 @@ namespace Yubico.YubiKey.Scp
                 for (int i = 0; i < 65; i++)
                 {
                     var result = connection.SendCommand(
-                        new ResetCommand(ins, overridenKeyRef.VersionNumber, overridenKeyRef.Id, data));
+                        new ResetCommand(ins, overridenKeyRef.VersionNumber, overridenKeyRef.Id, new byte[8]));
 
                     switch (result.StatusWord)
                     {
@@ -438,10 +484,28 @@ namespace Yubico.YubiKey.Scp
 
             return keys;
         }
+        public IReadOnlyCollection<X509Certificate2> GetCertificateBundle(KeyReference keyReference)
+        {
+            _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
+            const int TAG_CERTIFICATE_STORE = 0xBF21;
+
+            var nestedTlv = new TlvObject(
+                0xA6, //TODO what is this constant?
+                new TlvObject(0x83, keyReference.GetBytes)
+                    .GetBytes().Span
+                ).GetBytes();
+
+            var certificateTlvData = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
+            var certificateTlvList = TlvObjects.DecodeList(certificateTlvData.Span);
+
+            return certificateTlvList
+                .Select(tlv => new X509Certificate2(tlv.GetBytes().ToArray()))
+                .ToList();
+        }
 
         public ReadOnlyMemory<byte> GetData(int tag, ReadOnlyMemory<byte>? data = null)
         {
-            var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
+            var connection = Connection ?? _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
             var response = connection.SendCommand(new GetDataCommand(tag, data));
 
             return response.GetData();
@@ -452,11 +516,9 @@ namespace Yubico.YubiKey.Scp
         /// It will close the session. The most important function of closing a
         /// session is to close the connection.
         /// </summary>
-
         // Note that .NET recommends a Dispose method call Dispose(true) and
         // GC.SuppressFinalize(this). The actual disposal is in the
         // Dispose(bool) method.
-        //
         // However, that does not apply to sealed classes.
         // So the Dispose method will simply perform the
         // "closing" process, no call to Dispose(bool) or GC.
@@ -470,25 +532,6 @@ namespace Yubico.YubiKey.Scp
             Connection?.Dispose();
 
             _disposed = true;
-        }
-
-        public IReadOnlyCollection<X509Certificate2> GetCertificateBundle(KeyReference keyReference)
-        {
-            _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
-            int TAG_CERTIFICATE_STORE = 0xBF21;
-
-            var nestedTlv = new TlvObject(
-                0xA6, //TODO what is this constant?
-                new TlvObject(0x83, keyReference.GetBytes)
-                    .GetBytes().Span
-            ).GetBytes();
-
-            var certificateTlvData = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
-            var certificateTlvList = TlvObjects.DecodeList(certificateTlvData.Span);
-
-            return certificateTlvList
-                .Select(tlv => new X509Certificate2(tlv.GetBytes().ToArray()))
-                .ToList();
         }
     }
 }
