@@ -176,7 +176,7 @@ namespace Yubico.YubiKey
             IsNfcDevice = _smartCardDevice?.IsNfcTransport() ?? false;
             LastActiveTransport = GetTransportIfOnlyDevice();
 
-            //Todo consolidate constructors..
+            //TODO consolidate constructors..
         }
 
         /// <summary>
@@ -296,7 +296,7 @@ namespace Yubico.YubiKey
         public IScpYubiKeyConnection ConnectScp(byte[] applicationId, ScpKeyParameters keyParameters) //TODO Decide if to keep or not
         {
             var application = YubiKeyApplicationExtensions.GetById(applicationId);
-            return (IScpYubiKeyConnection)ConnectionFactory.CreateScpConnection(application, keyParameters); //Todo safe?
+            return (IScpYubiKeyConnection)ConnectionFactory.CreateScpConnection(application, keyParameters); //TODO safe?
         }
 
         #region obsoletewip

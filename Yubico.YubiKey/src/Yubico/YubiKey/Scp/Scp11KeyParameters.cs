@@ -27,7 +27,7 @@ namespace Yubico.YubiKey.Scp
     /// </summary>
     public class Scp11KeyParameters : ScpKeyParameters
     {
-        public ECParameters SecurityDomainEllipticCurveKeyAgreementKeyPublicKey { get; }
+        public ECParameters SecurityDomainEllipticCurveKeyAgreementKeyPublicKey { get; } // TODO Add docs
         public KeyReference? OffCardEntityKeyReference { get; }
         public ECParameters? OffCardEntityEllipticCurveAgreementPrivateKey { get; }
         public IReadOnlyList<X509Certificate2> Certificates { get; }

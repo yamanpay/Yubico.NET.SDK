@@ -67,9 +67,6 @@ namespace Yubico.YubiKey.Scp.Commands
         {
         }
 
-        public ReadOnlyMemory<byte> GetData()
-        {
-            return ResponseApdu.Data;
-        }
+        public ReadOnlyMemory<byte> GetData() => ResponseApdu.Data;
     }
 }

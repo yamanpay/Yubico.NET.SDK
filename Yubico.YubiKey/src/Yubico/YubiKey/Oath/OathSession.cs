@@ -85,7 +85,7 @@ namespace Yubico.YubiKey.Oath
         /// <param name="yubiKey">
         /// The object that represents the actual YubiKey which will perform the operations.
         /// </param>
-        /// <param name="keyParameters">todo</param>
+        /// <param name="keyParameters">TODO</param>
         /// <exception cref="ArgumentNullException">
         /// The <c>yubiKey</c> argument is null.
         /// </exception>

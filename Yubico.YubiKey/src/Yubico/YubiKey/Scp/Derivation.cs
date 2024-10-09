@@ -31,8 +31,8 @@ namespace Yubico.YubiKey.Scp
         // Derive a key from the challenges.
         // This method only supports deriving a 64- or 128-bit result based on
         // challenges each of which must be 8 bytes.
-        // The result (output) will be 8 bytes (outputLenBits = 0x40 = 64 bits)
-        // or 16 bytes (outputLen = 0x80 = 128 bits).
+        // The result (output) will be 8 bytes (outputLenBits = 64 bits)
+        // or 16 bytes (outputLen = 128 bits).
         public static Memory<byte> Derive(
             byte dataDerivationConstant,
             byte outputLenBits,
@@ -40,7 +40,7 @@ namespace Yubico.YubiKey.Scp
             ReadOnlySpan<byte> hostChallenge,
             ReadOnlySpan<byte> cardChallenge)
         {
-            if (outputLenBits != 0x40 && outputLenBits != 0x80)
+            if (outputLenBits != 64 && outputLenBits != 128)
             {
                 throw new SecureChannelException(ExceptionMessages.IncorrectDerivationLength);
             }
@@ -64,7 +64,7 @@ namespace Yubico.YubiKey.Scp
             cmacObj.CmacUpdate(macInp);
             cmacObj.CmacFinal(cmac);
 
-            if (outputLenBits == 0x80) //Output is a 128 bit key?
+            if (outputLenBits == 128) // Output is a 128 bit key
             {
                 return cmac.ToArray();
             }
@@ -82,7 +82,7 @@ namespace Yubico.YubiKey.Scp
             byte dataDerivationConstant,
             ReadOnlySpan<byte> key,
             ReadOnlySpan<byte> hostChallenge,
-            ReadOnlySpan<byte> cardChallenge) => Derive(dataDerivationConstant, 0x40, key, hostChallenge, cardChallenge);
+            ReadOnlySpan<byte> cardChallenge) => Derive(dataDerivationConstant, 64, key, hostChallenge, cardChallenge);
 
         public static SessionKeys DeriveSessionKeysFromStaticKeys(
             StaticKeys staticKeys,
@@ -106,9 +106,9 @@ namespace Yubico.YubiKey.Scp
                 // is not exactly 8 bytes. In that case, the first call would
                 // fail before generating a result, so there will be no data to
                 // overwrite.
-                var SMAC = Derive(DDC_SMAC, 0x80, macKey, hostChallenge, cardChallenge);
-                var SENC = Derive(DDC_SENC, 0x80, encKey, hostChallenge, cardChallenge);
-                var SRMAC = Derive(DDC_SRMAC, 0x80, macKey, hostChallenge, cardChallenge);
+                var SMAC = Derive(DDC_SMAC, 128, macKey, hostChallenge, cardChallenge);
+                var SENC = Derive(DDC_SENC, 128, encKey, hostChallenge, cardChallenge);
+                var SRMAC = Derive(DDC_SRMAC, 128, macKey, hostChallenge, cardChallenge);
 
                 return new SessionKeys(SMAC, SENC, SRMAC);
             }

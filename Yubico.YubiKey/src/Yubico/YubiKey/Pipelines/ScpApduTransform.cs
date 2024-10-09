@@ -27,20 +27,18 @@ namespace Yubico.YubiKey.Pipelines
     ///
     /// Commands and responses sent through this pipeline are confidential and authenticated.
     ///
-    /// Requires pre-shared <see cref="Scp03.StaticKeys"/>.
+    /// Requires pre-shared <see cref="Scp03.StaticKeys"/>. TODO
     /// </remarks>
-    // TODO This appears to only handle Scp03 as if it were the sole protocol. Needs to be either refactored or 
     // broken into two transforms
     internal class ScpApduTransform : IApduTransform, IDisposable
     {
-        public ScpKeyParameters KeyParameters { get; private set; }
+        public ScpKeyParameters KeyParameters { get; }
 
         private ScpState ScpState =>
             _scpState ?? throw new InvalidOperationException($"{nameof(Scp.ScpState)} has not been initialized. The Setup method must be called.");
         
         private readonly IApduTransform _pipeline;
         private ScpState? _scpState;
-        // private readonly ScpState _scpState;
         private bool _disposed;
 
         /// <summary>
@@ -52,8 +50,6 @@ namespace Yubico.YubiKey.Pipelines
         {
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
             KeyParameters = keyParameters ?? throw new ArgumentNullException(nameof(keyParameters));
-
-            _disposed = false;
         }
 
         /// <summary>
@@ -61,7 +57,6 @@ namespace Yubico.YubiKey.Pipelines
         /// </summary>
         public void Setup()
         {
-            // Setup
             _pipeline.Setup();
 
             if (KeyParameters.GetType() == typeof(Scp03KeyParameters))
@@ -74,10 +69,8 @@ namespace Yubico.YubiKey.Pipelines
             }
         }
 
-        private void InitializeScp11(Scp11KeyParameters keyParameters)
-        {
-            _scpState = Scp11State.InitScp11(_pipeline,(Scp11KeyParameters)keyParameters);
-        }
+        private void InitializeScp11(Scp11KeyParameters keyParameters) 
+            => _scpState = Scp11State.CreateScpState(_pipeline, keyParameters);
 
         private void InitializeScp03(Scp03KeyParameters keyParams)
         {

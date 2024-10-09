@@ -25,10 +25,19 @@ namespace Yubico.YubiKey.Scp
         public ScpConnection(
             ISmartCardDevice smartCardDevice,
             YubiKeyApplication yubiKeyApplication,
-            ScpKeyParameters scpKeys)
-            : base(smartCardDevice, yubiKeyApplication, null) // TODO Consider this, dont uyse this constructor
+            ScpKeyParameters keyParameters)
+            : base(smartCardDevice, yubiKeyApplication, null) // TODO Consider this, dont use this constructor
         {
-            _scpApduTransform = SetObject(yubiKeyApplication, scpKeys);
+            // _scpApduTransform = SetObject(yubiKeyApplication, scpKeys); TODO Is this method really needed?
+            
+            var previousPipeline = GetPipeline();
+            var nextPipeline = new ScpApduTransform(previousPipeline, keyParameters);
+
+            // Set parent pipeline
+            SetPipeline(nextPipeline);
+            nextPipeline.Setup();
+
+            _scpApduTransform = nextPipeline;
         }
         
         // public ScpConnection(
@@ -52,25 +61,31 @@ namespace Yubico.YubiKey.Scp
         
         public ScpKeyParameters KeyParameters => _scpApduTransform.KeyParameters;
 
-        private ScpApduTransform SetObject(
-            YubiKeyApplication application,
-            ScpKeyParameters scpKeys)
-        {
-            var scpApduTransform = new ScpApduTransform(GetPipeline(), scpKeys);
-            IApduTransform apduPipeline = scpApduTransform;
-
-            apduPipeline = application switch
-            {
-                YubiKeyApplication.Fido2 => new FidoErrorTransform(apduPipeline),
-                YubiKeyApplication.Otp => new OtpErrorTransform(apduPipeline),
-                _ => apduPipeline
-            };
-
-            SetPipeline(apduPipeline);
-            apduPipeline.Setup();
-
-            return scpApduTransform;
-        }
+        // private ScpApduTransform SetObject(
+        //     YubiKeyApplication application,
+        //     ScpKeyParameters keyParameters)
+        // {
+        //     var previousPipeline = GetPipeline();
+        //     var appendedPipeline = new ScpApduTransform(previousPipeline, keyParameters);
+        //     
+        //     // Is it even possible to connect to Fido2 and Otp with SCP?
+        //     // IApduTransform apduPipeline = application switch
+        //     // {
+        //     //     YubiKeyApplication.Fido2 => new FidoErrorTransform(appendedPipeline),
+        //     //     YubiKeyApplication.Otp => new OtpErrorTransform(appendedPipeline),
+        //     //     _ => appendedPipeline
+        //     // }; 
+        //     
+        //     // Set parent pipeline
+        //     // SetPipeline(apduPipeline);
+        //     // apduPipeline.Setup();
+        //
+        //     // Set parent pipeline
+        //     SetPipeline(appendedPipeline);
+        //     appendedPipeline.Setup();
+        //     
+        //     return appendedPipeline;
+        // }
         
         protected override void Dispose(bool disposing)
         {

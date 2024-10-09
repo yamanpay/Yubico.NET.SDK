@@ -24,7 +24,10 @@ namespace Yubico.YubiKey.Scp
 {
     internal static class ChannelMac
     {
-        public static (CommandApdu macdApdu, byte[] newMacChainingValue) MacApdu(CommandApdu apdu, byte[] macKey, byte[] macChainingValue)
+        public static (CommandApdu macdApdu, byte[] newMacChainingValue) MacApdu(
+            CommandApdu apdu,
+            byte[] macKey,
+            byte[] macChainingValue) //TODO Span
         {
             if (macChainingValue.Length != 16)
             {
@@ -81,7 +84,6 @@ namespace Yubico.YubiKey.Scp
             }
         }
 
-
         private static byte[] ApduToBytes(CommandApdu apdu)
         {
             byte[] data = apdu.Data.ToArray();
@@ -97,7 +99,7 @@ namespace Yubico.YubiKey.Scp
 
         private static CommandApdu AddDataToApdu(CommandApdu apdu, byte[] data)
         {
-            var newApdu = new CommandApdu()
+            var newApdu = new CommandApdu
             {
                 Cla = apdu.Cla,
                 Ins = apdu.Ins,
@@ -110,7 +112,7 @@ namespace Yubico.YubiKey.Scp
 
             if (!apdu.Data.IsEmpty)
             {
-                apdu.Data.ToArray().CopyTo(newData, 0);
+                apdu.Data.Span.CopyTo(newData);
             }
 
             data.CopyTo(newData, currentDataLength);
