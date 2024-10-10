@@ -488,11 +488,12 @@ namespace Yubico.YubiKey.Scp
         {
             _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
             const int TAG_CERTIFICATE_STORE = 0xBF21;
-
+            const int ControlReferenceTemplateTag = 0xA6;
+            const int KidKvnTag = 0x83;
+            
             var nestedTlv = new TlvObject(
-                0xA6, //TODO what is this constant?
-                new TlvObject(0x83, keyReference.GetBytes)
-                    .GetBytes().Span
+                ControlReferenceTemplateTag, 
+                new TlvObject(KidKvnTag, keyReference.GetBytes).GetBytes().Span
                 ).GetBytes();
 
             var certificateTlvData = GetData(TAG_CERTIFICATE_STORE, nestedTlv);

@@ -92,7 +92,7 @@ namespace Yubico.YubiKey.Scp
                 typeof(InitializeUpdateResponse));
 
             var initializeUpdateResponse = initializeUpdateCommand.CreateResponseForApdu(initializeUpdateResponseApdu);
-            initializeUpdateResponse.ThrowIfFailed();
+            initializeUpdateResponse.ThrowIfFailed($"Error when performing {initializeUpdateCommand.GetType().Name}: {initializeUpdateResponse.StatusMessage}");
 
             var cardChallenge = initializeUpdateResponse.CardChallenge.ToArray().AsMemory();
             var cardCryptogram = initializeUpdateResponse.CardCryptogram.ToArray().AsMemory();

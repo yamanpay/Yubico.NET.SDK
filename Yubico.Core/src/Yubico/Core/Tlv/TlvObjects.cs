@@ -56,11 +56,19 @@ namespace Yubico.YubiKit.Core.Util
             foreach (TlvObject? tlv in list)
             {
                 ReadOnlyMemory<byte> bytes = tlv.GetBytes();
-                stream.Write(bytes.ToArray(), 0,bytes.Length);
+#if NETSTANDARD2_1_OR_GREATER
+                stream.Write(bytes.Span);
+#else
+                stream.Write(bytes.Span.ToArray(), 0, bytes.Length);
+#endif
             }
             return stream.ToArray();
         }
 
+        public static byte[] EncodeMany(params TlvObject[] tlvs) => EncodeList(tlvs);
+
+
+        //Todo keep?
         public static byte[] EncodeMap(IReadOnlyDictionary<int, ReadOnlyMemory<byte>> map)
         {
             if (map is null)
@@ -78,7 +86,6 @@ namespace Yubico.YubiKit.Core.Util
             return stream.ToArray();
         }
 
-        // EncodeList and EncodeMap methods remain the same
         /// <summary>
         /// Decode a single TLV encoded object, returning only the value.
         /// </summary>

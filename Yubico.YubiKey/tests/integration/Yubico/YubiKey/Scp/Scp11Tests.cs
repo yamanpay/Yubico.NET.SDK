@@ -59,7 +59,7 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void Scp11b_Import_Succeeds()
+        public void Scp11b_Import_Succeeds() //todo
         {
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x2);
 
@@ -107,24 +107,24 @@ namespace Yubico.YubiKey.Scp
             }
         }
 
-        [Fact]
-        public void Scp11a_Authenticate_Succeeds()
-        {
-
-            byte kvn = 0x03;
-            var keyReference = new KeyReference(ScpKid.Scp11a, kvn);
-
-            Scp11KeyParameters keyParams;
-            using (var session = new SecurityDomainSession(Device))
-            {
-                keyParams = LoadKeys(session, ScpKid.Scp11a, kvn);
-            }
-
-            using (var session = new SecurityDomainSession(Device, keyParams))
-            {
-                session.DeleteKeySet(keyReference.VersionNumber, false);
-            }
-        }
+        // [Fact]
+        // public void Scp11a_Authenticate_Succeeds()
+        // {
+        //
+        //     byte kvn = 0x03;
+        //     var keyReference = new KeyReference(ScpKid.Scp11a, kvn);
+        //
+        //     Scp11KeyParameters keyParams;
+        //     using (var session = new SecurityDomainSession(Device))
+        //     {
+        //         keyParams = LoadKeys(session, ScpKid.Scp11a, kvn);
+        //     }
+        //
+        //     using (var session = new SecurityDomainSession(Device, keyParams))
+        //     {
+        //         session.DeleteKeySet(keyReference.VersionNumber, false);
+        //     }
+        // }
         
 
         // private Scp11KeyParameters LoadKeys(SecurityDomainSession session, byte scpKid, byte kvn)

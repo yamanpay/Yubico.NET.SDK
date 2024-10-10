@@ -17,9 +17,6 @@ using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Scp.Commands
 {
-    /// <summary>
-    /// TODO
-    /// </summary>
     internal class GenerateEcKeyCommand : IYubiKeyCommand<GenerateEcKeyResponse>
     {
         public YubiKeyApplication Application => YubiKeyApplication.InterIndustry;

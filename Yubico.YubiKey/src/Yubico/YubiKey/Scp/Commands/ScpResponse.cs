@@ -32,7 +32,7 @@ namespace Yubico.YubiKey.Scp.Commands
             _ => ResponseStatus.Failed
         };
 
-        public virtual void ThrowIfFailed()
+        public virtual void ThrowIfFailed(string? message = null)
         {
             switch (StatusWord)
             {
@@ -40,7 +40,7 @@ namespace Yubico.YubiKey.Scp.Commands
                     Debug.Assert(Status == ResponseStatus.Success);
                     return;
                 default:
-                    throw new Exception(); // looks a bit generic?
+                    throw new SecureChannelException(message ?? StatusMessage); 
             }
         }
     }
