@@ -62,8 +62,8 @@ namespace Yubico.YubiKey.Scp
             // GPC v2.3 Amendment F (SCP11) v1.4 §7.6.2.3
             byte[] keyUsage = { 0x3C }; // AUTHENTICATED | C_MAC | C_DECRYPTION | R_MAC | R_ENCRYPTION
             byte[] keyType = { 0x88 }; // AES
-            byte[] keyLen = { 0x10 }; // 128-bit
-            byte[] keyIdentifier = { GetScpIdentifier(keyParams.KeyReference) };
+            byte[] keyLen = { 16 }; // 128-bit
+            byte[] keyIdentifier = { 0x11, GetScpIdentifierByte(keyParams.KeyReference) };
             byte[] authenticateScpTlvData = TlvObjects.EncodeMany(
                 new TlvObject(
                     KeyAgreementTag, TlvObjects.EncodeMany(
@@ -74,11 +74,6 @@ namespace Yubico.YubiKey.Scp
                         )),
                 new TlvObject(EckaTag, ephemeralPublicKeyEncodedPointOceEcka)
                 );
-
-            var skOceEcka =
-                keyParams
-                    .OffCardEntityEllipticCurveAgreementPrivateKey ?? // If set, we will use this for SCP11A and SCP11C. 
-                ephemeralKeyPairOceEcka; // else just use the newly created ephemeral Key for (SCP11b)
 
             var authenticateCommand = keyParams.KeyReference.Id == ScpKid.Scp11b
                 ? new InternalAuthenticateCommand(
@@ -109,6 +104,11 @@ namespace Yubico.YubiKey.Scp
                     Y = epkSdEckaEncodedPoint.Span[33..].ToArray()
                 }
             };
+
+            var skOceEcka =
+                keyParams
+                    .OffCardEntityEllipticCurveAgreementPrivateKey ?? // If set, we will use this for SCP11A and SCP11C. 
+                ephemeralKeyPairOceEcka; // else just use the newly created ephemeral Key for (SCP11b)
 
             var (encryptionKey, macKey, rMacKey, dekKey)
                 = GetX963KDFKeyAgreementKeys(
@@ -216,11 +216,11 @@ namespace Yubico.YubiKey.Scp
         /// Gets the standardized SCP identifier for the given key reference.
         /// Global Platform Secure Channel Protocol 11 Card Specification v2.3 – Amendment F § 7.1.1
         /// </summary>
-        private static byte GetScpIdentifier(KeyReference keyReference) =>
+        private static byte GetScpIdentifierByte(KeyReference keyReference) =>
             keyReference.Id switch
             {
-                ScpKid.Scp11a => 0b1,
-                ScpKid.Scp11b => 0b0,
+                ScpKid.Scp11a => 0b01,
+                ScpKid.Scp11b => 0b00,
                 ScpKid.Scp11c => 0b11,
                 _ => throw new ArgumentException("Invalid SCP11 KID")
             };
