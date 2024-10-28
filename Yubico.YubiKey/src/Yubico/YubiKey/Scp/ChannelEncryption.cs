@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Buffers.Binary;
 using Yubico.YubiKey.Cryptography;
 
@@ -19,7 +20,7 @@ namespace Yubico.YubiKey.Scp
 {
     internal static class ChannelEncryption
     {
-        public static byte[] EncryptData(byte[] payload, byte[] key, int encryptionCounter)
+        public static byte[] EncryptData(ReadOnlySpan<byte> dataToEncrypt, ReadOnlySpan<byte> encryptionKey, int encryptionCounter)
         {
             // NB: Could skip this if the payload is empty (rather than sending a 16-byte encrypted '0x800000...' payload
             byte[] countBytes = new byte[sizeof(int)];
@@ -27,15 +28,15 @@ namespace Yubico.YubiKey.Scp
 
             byte[] ivInput = new byte[16];
             countBytes.CopyTo(ivInput, 16 - countBytes.Length); // copy to rightmost part of block
-            byte[] iv = AesUtilities.BlockCipher(key, ivInput);
+            byte[] iv = AesUtilities.BlockCipher(encryptionKey.ToArray(), ivInput); //todo toarry
 
-            byte[] paddedPayload = Padding.PadToBlockSize(payload);
-            byte[] encryptedData = AesUtilities.AesCbcEncrypt(key, iv, paddedPayload);
+            byte[] paddedPayload = Padding.PadToBlockSize(dataToEncrypt.ToArray());
+            byte[] encryptedData = AesUtilities.AesCbcEncrypt(encryptionKey.ToArray(), iv, paddedPayload);
 
             return encryptedData;
         }
 
-        public static byte[] DecryptData(byte[] payload, byte[] key, int encryptionCounter)
+        public static byte[] DecryptData(byte[] dataToDecrypt, byte[] key, int encryptionCounter)
         {
             byte[] countBytes = new byte[sizeof(int)];
             BinaryPrimitives.WriteInt32BigEndian(countBytes, encryptionCounter);
@@ -45,7 +46,7 @@ namespace Yubico.YubiKey.Scp
             ivInput[0] = 0x80; // to mark as RMAC calculation
             byte[] iv = AesUtilities.BlockCipher(key, ivInput);
 
-            byte[] decryptedData = AesUtilities.AesCbcDecrypt(key, iv, payload);
+            byte[] decryptedData = AesUtilities.AesCbcDecrypt(key, iv, dataToDecrypt);
 
             return Padding.RemovePadding(decryptedData);
         }

@@ -39,32 +39,34 @@ namespace Yubico.YubiKey.Scp
 
         internal static Scp11State CreateScpState(
             IApduTransform pipeline,
-            Scp11KeyParameters keyParams)
+            Scp11KeyParameters keyParameters)
         {
-            // Handle Scp11a and Scp11c
-            if (keyParams.KeyReference.Id == ScpKid.Scp11a || keyParams.KeyReference.Id == ScpKid.Scp11c)
+            // Perform Security Operation, if needed (for Scp11a and Scp11c)
+            if (keyParameters.KeyReference.Id == ScpKid.Scp11a || keyParameters.KeyReference.Id == ScpKid.Scp11c)
             {
-                PerformSecurityOperation(pipeline, keyParams);
+                PerformSecurityOperation(pipeline, keyParameters);
             }
 
-            var securityDomainPublicKey = keyParams.SecurityDomainEllipticCurveKeyAgreementKeyPublicKey;
+            var securityDomainPublicKey = keyParameters.SecurityDomainEllipticCurveKeyAgreementKeyPublicKey;
             var securityDomainPublicKeyCurve = securityDomainPublicKey.Curve;
 
-            var ecdhObject = CryptographyProviders.EcdhPrimitivesCreator();
-            var ephemeralKeyPairOceEcka = ecdhObject.GenerateKeyPair(securityDomainPublicKeyCurve);
+            // Generate a public and private key using the supplied curve
+            var ekpOceEcka = CryptographyProviders.EcdhPrimitivesCreator()
+                .GenerateKeyPair(securityDomainPublicKeyCurve);
 
             // Create an encoded point of the ephemeral public key to send to the Yubikey
             byte[] ephemeralPublicKeyEncodedPointOceEcka = new byte[65];
-            ephemeralPublicKeyEncodedPointOceEcka[0] = 0x04;
-            ephemeralKeyPairOceEcka.Q.X.CopyTo(ephemeralPublicKeyEncodedPointOceEcka, 1);
-            ephemeralKeyPairOceEcka.Q.Y.CopyTo(ephemeralPublicKeyEncodedPointOceEcka, 33);
+            ephemeralPublicKeyEncodedPointOceEcka[0] = 0x04; // Coding Identifier Byte
+            ekpOceEcka.Q.X.CopyTo(ephemeralPublicKeyEncodedPointOceEcka, 1);
+            ekpOceEcka.Q.Y.CopyTo(ephemeralPublicKeyEncodedPointOceEcka, 33);
 
             // GPC v2.3 Amendment F (SCP11) v1.4 §7.6.2.3
             byte[] keyUsage = { 0x3C }; // AUTHENTICATED | C_MAC | C_DECRYPTION | R_MAC | R_ENCRYPTION
             byte[] keyType = { 0x88 }; // AES
             byte[] keyLen = { 16 }; // 128-bit
-            byte[] keyIdentifier = { 0x11, GetScpIdentifierByte(keyParams.KeyReference) };
-            byte[] authenticateScpTlvData = TlvObjects.EncodeMany(
+            byte[] keyIdentifier = { 0x11, GetScpIdentifierByte(keyParameters.KeyReference) };
+
+            byte[] hostAuthenticateTlvEncodedData = TlvObjects.EncodeMany(
                 new TlvObject(
                     KeyAgreementTag, TlvObjects.EncodeMany(
                         new TlvObject(0x90, keyIdentifier),
@@ -75,13 +77,13 @@ namespace Yubico.YubiKey.Scp
                 new TlvObject(EckaTag, ephemeralPublicKeyEncodedPointOceEcka)
                 );
 
-            var authenticateCommand = keyParams.KeyReference.Id == ScpKid.Scp11b
+            var authenticateCommand = keyParameters.KeyReference.Id == ScpKid.Scp11b
                 ? new InternalAuthenticateCommand(
-                    keyParams.KeyReference.VersionNumber, keyParams.KeyReference.Id,
-                    authenticateScpTlvData) as IYubiKeyCommand<ScpResponse>
+                    keyParameters.KeyReference.VersionNumber, keyParameters.KeyReference.Id,
+                    hostAuthenticateTlvEncodedData) as IYubiKeyCommand<ScpResponse>
                 : new ExternalAuthenticateCommand(
-                    keyParams.KeyReference.VersionNumber, keyParams.KeyReference.Id,
-                    authenticateScpTlvData) as IYubiKeyCommand<ScpResponse>;
+                    keyParameters.KeyReference.VersionNumber, keyParameters.KeyReference.Id,
+                    hostAuthenticateTlvEncodedData) as IYubiKeyCommand<ScpResponse>;
 
             var authenticateResponseApdu = pipeline.Invoke(
                 authenticateCommand.CreateCommandApdu(), authenticateCommand.GetType(), typeof(ScpResponse));
@@ -90,39 +92,31 @@ namespace Yubico.YubiKey.Scp
             authenticateResponse.ThrowIfFailed(
                 $"Error when performing {authenticateCommand.GetType().Name}: {authenticateResponse.StatusMessage}");
 
-            var responseTlvs = TlvObjects.DecodeList(authenticateResponseApdu.Data.Span);
-            var epkSdEckaTlv = responseTlvs[0];
-            var epkSdEckaEncodedPoint = TlvObjects.UnpackValue(EckaTag, epkSdEckaTlv.GetBytes().Span); //Ecka Tag
-            var sdReceipt = TlvObjects.UnpackValue(ReceiptTag, responseTlvs[1].GetBytes().Span);
+            var authenticateResponseTlvs = TlvObjects.DecodeList(authenticateResponseApdu.Data.Span);
 
-            var epkSdEcka = new ECParameters // Yubikey generated key agreement key 
-            {
-                Curve = securityDomainPublicKeyCurve,
-                Q = new ECPoint
-                {
-                    X = epkSdEckaEncodedPoint.Span[1..33].ToArray(),
-                    Y = epkSdEckaEncodedPoint.Span[33..].ToArray()
-                }
-            };
+            var epkSdEckaTlv = authenticateResponseTlvs[0];
+            var epkSdEckaTlvEncodedData = epkSdEckaTlv.GetBytes();
+            var sdReceipt = TlvObjects.UnpackValue(
+                ReceiptTag,
+                authenticateResponseTlvs[1].GetBytes().Span); // Yubikey X963KDF Receipt to match with our own X963KDF
 
             var skOceEcka =
-                keyParams
+                keyParameters
                     .OffCardEntityEllipticCurveAgreementPrivateKey ?? // If set, we will use this for SCP11A and SCP11C. 
-                ephemeralKeyPairOceEcka; // else just use the newly created ephemeral Key for (SCP11b)
+                ekpOceEcka; // Otherwise, just use the newly created ephemeral key for SCP11b.
 
             var (encryptionKey, macKey, rMacKey, dekKey)
                 = GetX963KDFKeyAgreementKeys(
-                    ecdhObject,
+                    skOceEcka.Curve,
                     securityDomainPublicKey,
-                    epkSdEcka,
-                    ephemeralKeyPairOceEcka,
+                    ekpOceEcka,
                     skOceEcka,
-                    epkSdEckaTlv,
-                    keyUsage,
-                    keyType,
-                    keyLen,
                     sdReceipt,
-                    authenticateScpTlvData);
+                    epkSdEckaTlvEncodedData,
+                    hostAuthenticateTlvEncodedData,
+                    keyUsage,
+                    keyType, 
+                    keyLen);
 
             var sessionKeys = new SessionKeys(
                 macKey,
@@ -136,24 +130,23 @@ namespace Yubico.YubiKey.Scp
 
         private static (Memory<byte> encryptionKey, Memory<byte> macKey, Memory<byte> rMacKey, Memory<byte> dekKey)
             GetX963KDFKeyAgreementKeys(
-            IEcdhPrimitives ecdhObject,
+            ECCurve curve, // The curve being used for the key agreement
             ECParameters pkSdEcka, // Yubikey Public Key
-            ECParameters epkSdEcka, // Yubikey Ephemeral Public Key 
             ECParameters eskOceEcka, // Host Ephemeral Private Key
             ECParameters skOceEcka, // Host Private Key
-            TlvObject epkSdEckaTlv,
-            byte[] keyUsage,
-            byte[] keyType,
-            byte[] keyLen,
-            ReadOnlyMemory<byte> receipt,
-            byte[] data)
+            ReadOnlyMemory<byte> sdReceipt, // The receipt computed on the Yubikey
+            ReadOnlyMemory<byte> epkSdEckaTlvEncodedData, // Yubikey Ephemeral Public Key as Tlv Raw Data
+            ReadOnlyMemory<byte> hostAuthenticateTlvEncodedData,
+            ReadOnlyMemory<byte> keyUsage, // The shared key usage
+            ReadOnlyMemory<byte> keyType, // The shared key type
+            ReadOnlyMemory<byte> keyLen) // The shared key length
         {
             bool allKeysAreSameCurve = new[]
             {
-                epkSdEcka.Curve,
-                pkSdEcka.Curve,
-                eskOceEcka.Curve
-            }.All(c => c.Oid == skOceEcka.Curve.Oid);
+                pkSdEcka.Curve, // Yubikey Public Key
+                eskOceEcka.Curve, // Host Ephemeral Private Key
+                skOceEcka.Curve // Host Private Key
+            }.All(c => c.Oid == curve.Oid);
 
             if (!allKeysAreSameCurve)
             {
@@ -161,15 +154,19 @@ namespace Yubico.YubiKey.Scp
             }
 
             // Compute key agreement for:
-            //
             // Yubikey Ephemeral Public Key + Host Ephemeral Private Key
-            byte[] keyAgreementFirst = ecdhObject.ComputeSharedSecret(epkSdEcka, eskOceEcka.D);
+            var ecdhObject = CryptographyProviders.EcdhPrimitivesCreator();
+            var epkSdEcka = ExtractPublicKeyEcParameters(
+                epkSdEckaTlvEncodedData, skOceEcka.Curve); // Yubikey Ephemeral Public Key 
 
+            byte[] keyAgreementFirst = ecdhObject.ComputeSharedSecret(epkSdEcka, eskOceEcka.D);
+            
+            // Compute key agreement for:
             // Yubikey Public Key + Host Private Key
             byte[] keyAgreementSecond = ecdhObject.ComputeSharedSecret(pkSdEcka, skOceEcka.D);
 
             byte[] keyMaterial = MergeArrays(keyAgreementFirst, keyAgreementSecond);
-            byte[] keyAgreementData = MergeArrays(data, epkSdEckaTlv.GetBytes());
+            byte[] keyAgreementData = MergeArrays(hostAuthenticateTlvEncodedData, epkSdEckaTlvEncodedData);
             byte[] sharedInfo = MergeArrays(keyUsage, keyType, keyLen);
 
             const int keyCount = 4;
@@ -199,17 +196,34 @@ namespace Yubico.YubiKey.Scp
 
             // Do AES CMAC 
             using var cmacObj = CryptographyProviders.CmacPrimitivesCreator(CmacBlockCipherAlgorithm.Aes128);
-            Span<byte> genReceipt = stackalloc byte[16];
+            Span<byte> oceReceipt = stackalloc byte[16]; // Our generated receipt
             cmacObj.CmacInit(encryptionKey);
             cmacObj.CmacUpdate(keyAgreementData);
-            cmacObj.CmacFinal(genReceipt);
+            cmacObj.CmacFinal(oceReceipt);
 
-            if (!CryptographicOperations.FixedTimeEquals(genReceipt, receipt.Span))
+            if (!CryptographicOperations.FixedTimeEquals(
+                    oceReceipt, sdReceipt.Span)) // Needs to match with the receipt generated by the Yubikey
             {
                 throw new SecureChannelException(ExceptionMessages.KeyAgreementReceiptMissmatch);
             }
 
             return (encryptionKey, macKey, rmacKey, dekKey);
+        }
+
+        private static ECParameters ExtractPublicKeyEcParameters(ReadOnlyMemory<byte> epkSdEckaTlv, ECCurve curve)
+        {
+            var epkSdEckaEncodedPoint = TlvObjects.UnpackValue(EckaTag, epkSdEckaTlv.Span);
+            var epkSdEcka = new ECParameters
+            {
+                Curve = curve,
+                Q = new ECPoint
+                {
+                    X = epkSdEckaEncodedPoint.Span[1..33].ToArray(),
+                    Y = epkSdEckaEncodedPoint.Span[33..].ToArray()
+                }
+            };
+
+            return epkSdEcka;
         }
 
         /// <summary>

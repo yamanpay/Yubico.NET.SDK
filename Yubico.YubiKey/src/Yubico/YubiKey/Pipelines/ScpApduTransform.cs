@@ -45,7 +45,7 @@ namespace Yubico.YubiKey.Pipelines
         /// Constructs a new pipeline from the given one.
         /// </summary>
         /// <param name="pipeline">Underlying pipeline to send and receive encoded APDUs with</param>
-        /// <param name="keyParameters">Static keys pre-shared with the device</param>
+        /// <param name="keyParameters"></param>//todo
         public ScpApduTransform(IApduTransform pipeline, ScpKeyParameters keyParameters)
         {
             _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
@@ -118,8 +118,7 @@ namespace Yubico.YubiKey.Pipelines
             {
                 if (disposing)
                 {
-                    // ScpKeys.Dispose(); // TODO
-                    ScpState.Dispose();
+                    _scpState?.Dispose();
 
                     _disposed = true;
                 }

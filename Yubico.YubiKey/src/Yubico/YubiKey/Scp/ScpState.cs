@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using Yubico.Core.Iso7816;
 
 namespace Yubico.YubiKey.Scp
@@ -30,7 +29,7 @@ namespace Yubico.YubiKey.Scp
         {
             if (SessionKeys == null)
             {
-                throw new InvalidOperationException(ExceptionMessages.UnknownScp03Error);
+                throw new InvalidOperationException(ExceptionMessages.UnknownScpError);
             }
 
             if (command is null)
@@ -46,20 +45,20 @@ namespace Yubico.YubiKey.Scp
                 P2 = command.P2
             };
 
-            byte[] commandData = command.Data.ToArray(); //todo clear memory
+            byte[] commandData = command.Data.ToArray();
             byte[] encryptedData = ChannelEncryption.EncryptData(
-                commandData, SessionKeys.EncKey.ToArray(), _encryptionCounter);
+                commandData, SessionKeys.EncKey.Span, _encryptionCounter);
 
             _encryptionCounter++;
             encodedCommand.Data = encryptedData;
-            
+
             // Create a MAC:ed APDU
             (var macdApdu, byte[] newMacChainingValue) = MacApdu(
-                encodedCommand, 
-                SessionKeys.MacKey.ToArray(),
-                MacChainingValue.ToArray()); // TODO toarray remove
+                encodedCommand,
+                SessionKeys.MacKey.Span,
+                MacChainingValue.Span);
 
-            // Update sessions / states MacChainingValue
+            // Update the sessions MacChainingValue
             MacChainingValue = newMacChainingValue;
             
             return macdApdu;
@@ -74,7 +73,7 @@ namespace Yubico.YubiKey.Scp
         {
             if (SessionKeys is null)
             {
-                throw new InvalidOperationException(ExceptionMessages.UnknownScp03Error);
+                throw new InvalidOperationException(ExceptionMessages.UnknownScpError);
             }
 
             if (response is null)
@@ -93,16 +92,17 @@ namespace Yubico.YubiKey.Scp
             }
 
             // ALWAYS check RMAC before decryption
-            byte[] responseData = response.Data.ToArray();
-            VerifyRmac(responseData, SessionKeys.RmacKey.ToArray(), MacChainingValue.ToArray());
+            var responseData = response.Data;
+            VerifyRmac(responseData.Span, SessionKeys.RmacKey.Span, MacChainingValue.Span);
 
             byte[] decryptedData = Array.Empty<byte>();
             if (responseData.Length > 8)
             {
                 int previousEncryptionCounter = _encryptionCounter - 1;
                 decryptedData = ChannelEncryption.DecryptData(
-                    responseData.Take(responseData.Length - 8).ToArray(),
-                    SessionKeys.EncKey.ToArray(), //toarray
+
+                    responseData[..^8].ToArray(),
+                    SessionKeys.EncKey.ToArray(), //todo array
                     previousEncryptionCounter
                     );
             }
@@ -113,16 +113,20 @@ namespace Yubico.YubiKey.Scp
             fullDecryptedResponse[decryptedData.Length + 1] = response.SW2;
             return new ResponseApdu(fullDecryptedResponse);
         }
-        
-#pragma warning disable CA1822 // Is being used by subclasses
+
+        #pragma warning disable CA1822 // Is being used by subclasses
         protected (CommandApdu macdApdu, byte[] newMacChainingValue) MacApdu(
-#pragma warning restore CA1822
+            #pragma warning restore CA1822
             CommandApdu commandApdu,
-            byte[] macKey,
-            byte[] macChainingValue) =>
+            ReadOnlySpan<byte> macKey,
+            ReadOnlySpan<byte> macChainingValue) =>
             ChannelMac.MacApdu(commandApdu, macKey, macChainingValue);
 
-        protected static void VerifyRmac(byte[] responseData, byte[] toArray, byte[] bytes) => ChannelMac.VerifyRmac(responseData, toArray, bytes);
+        protected static void VerifyRmac(
+            ReadOnlySpan<byte> responseData,
+            ReadOnlySpan<byte> rmacKey,
+            ReadOnlySpan<byte> macChainingValue) =>
+            ChannelMac.VerifyRmac(responseData, rmacKey, macChainingValue);
 
         public void Dispose()
         {
@@ -142,7 +146,5 @@ namespace Yubico.YubiKey.Scp
                 }
             }
         }
-
-    
     }
 }

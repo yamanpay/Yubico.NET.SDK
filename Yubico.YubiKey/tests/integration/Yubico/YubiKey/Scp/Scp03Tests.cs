@@ -205,7 +205,7 @@ namespace Yubico.YubiKey.Scp
             using var session = new SecurityDomainSession(Device);
 
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
-            var certificateList = session.GetCertificateBundle(keyReference);
+            var certificateList = session.GetCertificates(keyReference);
 
             Assert.NotEmpty(certificateList);
         }

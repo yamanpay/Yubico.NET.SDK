@@ -13,9 +13,8 @@
 // limitations under the License.
 
 using Yubico.Core.Iso7816;
-using Yubico.YubiKey.Scp.Commands;
 
-namespace Yubico.YubiKey.Scp
+namespace Yubico.YubiKey.Scp.Commands
 {
     internal class SecurityOperationCommand : IYubiKeyCommand<SecurityOperationResponse> //todo visibility of classes?
     {

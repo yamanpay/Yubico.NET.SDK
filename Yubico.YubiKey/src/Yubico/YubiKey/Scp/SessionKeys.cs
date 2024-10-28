@@ -33,6 +33,7 @@ namespace Yubico.YubiKey.Scp
         public ReadOnlyMemory<byte> RmacKey => _rmacKey;
         /// <summary>
         /// Gets the session data encryption key.
+        /// <remarks>This is only set for SCP-11</remarks>
         /// </summary>
         public ReadOnlyMemory<byte>? DataEncryptionKey => _dataEncryptionKey;
 
@@ -42,6 +43,13 @@ namespace Yubico.YubiKey.Scp
         private readonly Memory<byte>? _dataEncryptionKey;
         private bool _disposed;
 
+        /// <summary>
+        /// Session keys for Secure Channel Protocol (SCP).
+        /// </summary>
+        /// <param name="macKey">The session MAC key.</param>
+        /// <param name="encryptionKey">The session encryption key.</param>
+        /// <param name="rmacKey">The session RMAC key.</param>
+        /// <param name="dataEncryptionKey">The session data encryption key. Optional.</param>
         public SessionKeys(
             Memory<byte> macKey, 
             Memory<byte> encryptionKey, 
@@ -63,7 +71,7 @@ namespace Yubico.YubiKey.Scp
         }
 
         // Overwrite the memory of the keys
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (_disposed)
             {

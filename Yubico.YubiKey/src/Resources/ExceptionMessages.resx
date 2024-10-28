@@ -352,8 +352,8 @@
     <value>An unknown error has occurred.</value>
     <comment>Candidate for removal</comment>
   </data>
-  <data name="UnknownScp03Error" xml:space="preserve">
-    <value>An unknown SCP03 error has occurred.</value>
+  <data name="UnknownScpError" xml:space="preserve">
+    <value>An unknown SCP error has occurred.</value>
   </data>
   <data name="ValueConversionFailed" xml:space="preserve">
     <value>Cannot convert the data to the requested type. Expected only {0} byte(s) of data, but {1} byte(s) were present.</value>

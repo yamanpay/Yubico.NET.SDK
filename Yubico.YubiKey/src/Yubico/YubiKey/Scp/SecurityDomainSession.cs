@@ -14,6 +14,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
@@ -344,46 +345,46 @@ namespace Yubico.YubiKey.Scp
         }
 
         /// <summary>
-        /// Generate a new SCP11 key.
-        /// Requires off-card entity verification.
+        /// Generate a new ECC key pair for the given key reference.
         /// </summary>
         /// <remarks>
-        /// <para>
         /// GlobalPlatform has no command to generate key pairs on the card itself. This is a
         /// Yubico extension that tries to mimic the format of the GPC PUT KEY
         /// command.
-        /// </para>
         /// </remarks>
-        /// <param name="keyRef">The KID-KVN pair to assign the new key</param>
-        /// <param name="replaceKvn">0 to generate a new keypair, non-zero to replace an existing KVN</param>
-        /// <returns>The public key from the generated key pair</returns>
+        /// <param name="keyRef">The KID-KVN pair of the key that should be generated.</param>
+        /// <param name="replaceKvn">The key version number of the key set that should be replaced, or 0 to generate a new key pair.</param>
+        /// <returns>The parameters of the generated key, including the curve and the public point.</returns>
+        /// 
         public ECParameters GenerateEcKey(KeyReference keyRef, byte replaceKvn)
         {
-            var connection = Connection ?? throw new InvalidOperationException("No connection initialized. Use the other constructor");
+            var connection = Connection ??
+                throw new InvalidOperationException("No connection initialized. Use the other constructor");
 
-            _log.LogDebug("Generating new key for {KeyRef}{ReplaceMessage}",
+            _log.LogDebug(
+                "Generating new key for {KeyRef}{ReplaceMessage}",
                 keyRef,
-                replaceKvn == 0 
-                    ? string.Empty 
+                replaceKvn == 0
+                    ? string.Empty
                     : $", replacing KVN=0x{replaceKvn:X2}");
 
-            const byte KeyTypeEccKeyParams = 0xF0;
-            const byte KeyTypeEccPublicKey = 0xB0;
-
-            var paramsTlv = new TlvObject(KeyTypeEccKeyParams, new byte[] { 0 }).GetBytes();
+            const byte keyTypeEccKeyParamsTag = 0xF0;
+            var paramsTlv = new TlvObject(keyTypeEccKeyParamsTag, new byte[] { 0 }).GetBytes();
             byte[] commandData = new byte[paramsTlv.Length + 1];
             commandData[0] = keyRef.VersionNumber;
             paramsTlv.CopyTo(commandData.AsMemory(1));
 
-            var generateKeyCommand = new GenerateEcKeyCommand(replaceKvn, keyRef.Id, commandData);
-            var response = connection.SendCommand(generateKeyCommand);
+            var command = new GenerateEcKeyCommand(replaceKvn, keyRef.Id, commandData);
+            var response = connection.SendCommand(command);
             if (response.Status != ResponseStatus.Success)
             {
                 throw new SecureChannelException(response.StatusMessage);
             }
 
+            const byte keyTypeEccPublicKeyTag = 0xB0;
             var tlvReader = new TlvReader(response.GetData());
-            var encodedPoint = tlvReader.ReadValue(KeyTypeEccPublicKey).Span;
+            var encodedPoint = tlvReader.ReadValue(keyTypeEccPublicKeyTag).Span;
+
             return new ECParameters
             {
                 Curve = ECCurve.NamedCurves.nistP256,
@@ -406,10 +407,10 @@ namespace Yubico.YubiKey.Scp
 
             var connection = _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
 
-            const byte INS_INITIALIZE_UPDATE = 0x50;
-            const byte INS_EXTERNAL_AUTHENTICATE = 0x82;
-            const byte INS_INTERNAL_AUTHENTICATE = 0x88;
-            const byte INS_PERFORM_SECURITY_OPERATION = 0x2A;
+            const byte insInitializeUpdate = 0x50;
+            const byte insExternalAuthenticate = 0x82;
+            const byte insInternalAuthenticate = 0x88;
+            const byte insPerformSecurityOperation = 0x2A;
 
             var keys = GetKeyInformation().Keys;
             foreach (var keyRef in keys) // Reset is done by blocking all available keys
@@ -423,20 +424,20 @@ namespace Yubico.YubiKey.Scp
                         // SCP03 uses KID=0, we use KVN=0 to allow deleting the default keys
                         // which have an invalid KVN (0xff).
                         overridenKeyRef = new KeyReference(0, 0);
-                        ins = INS_INITIALIZE_UPDATE;
+                        ins = insInitializeUpdate;
                         break;
                     case 0x02:
                     case 0x03:
                         continue; // Skip these as they are deleted by 0x01
                     case ScpKid.Scp11a:
                     case ScpKid.Scp11c:
-                        ins = INS_EXTERNAL_AUTHENTICATE;
+                        ins = insExternalAuthenticate;
                         break;
                     case ScpKid.Scp11b:
-                        ins = INS_INTERNAL_AUTHENTICATE;
+                        ins = insInternalAuthenticate;
                         break;
                     default: // 0x10, 0x20-0x2F
-                        ins = INS_PERFORM_SECURITY_OPERATION;
+                        ins = insPerformSecurityOperation;
                         break;
                 }
 
@@ -462,12 +463,16 @@ namespace Yubico.YubiKey.Scp
             _log.LogInformation("SCP keys reset");
         }
 
-        public Dictionary<KeyReference, Dictionary<byte, byte>> GetKeyInformation()
+        /// <summary>
+        /// Retrieves the key information stored in the YubiKey and returns it in a dictionary format.
+        /// </summary>
+        /// <returns>A read only dictionary containing the KeyReference as the key and a dictionary of key components as the value.</returns>
+        public IReadOnlyDictionary<KeyReference, Dictionary<byte, byte>> GetKeyInformation()
         {
-            const byte TAG_KEY_INFORMATION = 0xE0;
+            const byte tagKeyInformation = 0xE0;
 
             var keys = new Dictionary<KeyReference, Dictionary<byte, byte>>();
-            var tlvDataList = TlvObjects.DecodeList(GetData(TAG_KEY_INFORMATION).Span);
+            var tlvDataList = TlvObjects.DecodeList(GetData(tagKeyInformation).Span);
             foreach (var tlvObject in tlvDataList)
             {
                 var value = TlvObjects.UnpackValue(0xC0, tlvObject.GetBytes().Span);
@@ -482,21 +487,28 @@ namespace Yubico.YubiKey.Scp
                 keys.Add(keyRef, keyComponents);
             }
 
-            return keys;
+            return new ReadOnlyDictionary<KeyReference, Dictionary<byte, byte>>(keys);
         }
-        public IReadOnlyCollection<X509Certificate2> GetCertificateBundle(KeyReference keyReference)
+
+        /// <summary>
+        /// Retrieves the certificates associated with the given <paramref name="keyReference"/>.
+        /// </summary>
+        /// <param name="keyReference">The key reference for which the certificates should be retrieved.</param>
+        /// <returns>A list of X.509 certificates associated with the key reference.</returns>
+        public IReadOnlyList<X509Certificate2> GetCertificates(KeyReference keyReference)
         {
-            _log.LogInformation("Getting certificate bundle for key={KeyRef}", keyReference);
-            const int TAG_CERTIFICATE_STORE = 0xBF21;
-            const int ControlReferenceTemplateTag = 0xA6;
-            const int KidKvnTag = 0x83;
-            
+            _log.LogInformation("Getting certificates for key={KeyRef}", keyReference);
+
+            const int certificateStoreTag = 0xBF21;
+            const int controlReferenceTemplateTag = 0xA6;
+            const int kidKvnTag = 0x83;
+
             var nestedTlv = new TlvObject(
-                ControlReferenceTemplateTag, 
-                new TlvObject(KidKvnTag, keyReference.GetBytes).GetBytes().Span
+                controlReferenceTemplateTag,
+                new TlvObject(kidKvnTag, keyReference.GetBytes).GetBytes().Span
                 ).GetBytes();
 
-            var certificateTlvData = GetData(TAG_CERTIFICATE_STORE, nestedTlv);
+            var certificateTlvData = GetData(certificateStoreTag, nestedTlv);
             var certificateTlvList = TlvObjects.DecodeList(certificateTlvData.Span);
 
             return certificateTlvList
@@ -504,6 +516,12 @@ namespace Yubico.YubiKey.Scp
                 .ToList();
         }
 
+        /// <summary>
+        /// Gets data from the YubiKey associated with the given tag.
+        /// </summary>
+        /// <param name="tag">The tag of the data to retrieve.</param>
+        /// <param name="data">Optional data to send with the command.</param>
+        /// <returns>The data retrieved from the YubiKey.</returns>
         public ReadOnlyMemory<byte> GetData(int tag, ReadOnlyMemory<byte>? data = null)
         {
             var connection = Connection ?? _yubiKey.Connect(YubiKeyApplication.SecurityDomain);
@@ -517,6 +535,7 @@ namespace Yubico.YubiKey.Scp
         /// It will close the session. The most important function of closing a
         /// session is to close the connection.
         /// </summary>
+
         // Note that .NET recommends a Dispose method call Dispose(true) and
         // GC.SuppressFinalize(this). The actual disposal is in the
         // Dispose(bool) method.

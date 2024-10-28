@@ -39,13 +39,13 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void Scp11b_Authenticate_Succeeds()
+        public void Scp11b_Authenticate_Succeeds() // Works
         {
             IReadOnlyCollection<X509Certificate2> certificateList;
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
             using (var session = new SecurityDomainSession(Device))
             {
-                certificateList = session.GetCertificateBundle(keyReference);
+                certificateList = session.GetCertificates(keyReference);
             }
 
             var leaf = certificateList.Last();
@@ -61,11 +61,11 @@ namespace Yubico.YubiKey.Scp
         [Fact]
         public void Scp11b_Import_Succeeds() //todo
         {
-            var keyReference = new KeyReference(ScpKid.Scp11b, 0x2);
 
             using (var session = new SecurityDomainSession(Device))
             {
                 var ecDsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+                var keyReference = new KeyReference(ScpKid.Scp11b, 0x2);
                 // session.PutKeySet(keyReference);
                 session.GetKeyInformation();
             }
@@ -73,19 +73,19 @@ namespace Yubico.YubiKey.Scp
 
 
         [Fact]
-        public void TestGetCertificateBundle()
+        public void TestGetCertificateBundle() //Works
         {
             using var session = new SecurityDomainSession(Device);
 
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
-            var certificateList = session.GetCertificateBundle(keyReference);
+            var certificateList = session.GetCertificates(keyReference);
 
             Assert.NotEmpty(certificateList);
         }
 
         
         [Fact]
-        public void GenerateEcKey_Succeeds()
+        public void GenerateEcKey_Succeeds() // Works
         {
             using var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey);
            
@@ -101,10 +101,8 @@ namespace Yubico.YubiKey.Scp
             Assert.Equal(32, generatedKey.Q.Y.Length);
             Assert.Equal(ECCurve.NamedCurves.nistP256.Oid.Value, generatedKey.Curve.Oid.Value);
 
-            using (ECDsa ecdsa = ECDsa.Create(generatedKey))
-            {
-                Assert.NotNull(ecdsa);
-            }
+            using ECDsa ecdsa = ECDsa.Create(generatedKey);
+            Assert.NotNull(ecdsa);
         }
 
         // [Fact]
