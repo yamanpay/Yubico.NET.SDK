@@ -797,23 +797,15 @@ namespace Yubico.YubiKey.Scp
             var tlvs = TlvObjects.DecodeList(dataMs.ToArray());
             var identifiers = new Dictionary<KeyReference, ReadOnlyMemory<byte>>();
 
-            // for (int i = 0; i < tlvs.Count; i += 2)
-            // {
-            //     var current = tlvs[i];
-            //     var next = tlvs[i + 1];
-
-            //     var refData = next.GetBytes().Span;
-            //     var keyRef = new KeyReference(refData[0], refData[1]);
-            //     identifiers[keyRef] = current.GetBytes();
-            // }
-
             var tlvsSpan = tlvs.ToArray().AsSpan();
             while (!tlvsSpan.IsEmpty)
             {
                 var current = tlvsSpan[0];
                 var next = tlvsSpan[1];
+
                 var refData = next.GetBytes().Span;
                 var keyRef = new KeyReference(refData[0], refData[1]);
+                identifiers[keyRef] = current.GetBytes();
 
                 tlvsSpan = tlvsSpan[..2];
             }
