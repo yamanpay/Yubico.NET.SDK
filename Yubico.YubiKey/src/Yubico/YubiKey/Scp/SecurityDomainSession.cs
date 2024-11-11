@@ -14,15 +14,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.FileSystemGlobbing.Internal.PathSegments;
 using Microsoft.Extensions.Logging;
+using Yubico.Core.Buffers;
 using Yubico.Core.Iso7816;
 using Yubico.Core.Logging;
 using Yubico.Core.Tlv;
@@ -90,10 +88,10 @@ namespace Yubico.YubiKey.Scp
     /// </remarks>
     public sealed class SecurityDomainSession : IDisposable
     {
-        private const byte KeyTypeEccPrivateKey = 0xB1;
-        private const byte KeyTypeEccKeyParams = 0xF0;
-        private const byte KeyTypeEccPublicKey = 0xB0;
-        private const byte KeyTypeAes = 0x88;
+        private const byte EcPrivateKeyKeyType = 0xB1;
+        private const byte EcKeyKeyType = 0xF0;
+        private const byte EcPublicKeyKeyType = 0xB0;
+        private const byte AesKeyType = 0x88;
         private const byte ControlReferenceTag = 0xA6;
         private const byte KidKvnTag = 0x83;
         private const byte KeyInformationTag = 0xE0;
@@ -244,7 +242,7 @@ namespace Yubico.YubiKey.Scp
                 var encryptedKey = encryptor(key);
 
                 // Write key structure
-                var tlvData = new TlvObject(KeyTypeAes, encryptedKey.Span.ToArray()).GetBytes();
+                var tlvData = new TlvObject(AesKeyType, encryptedKey.Span.ToArray()).GetBytes();
                 dataWriter.Write(tlvData.ToArray());
 
                 // Write KCV
@@ -308,7 +306,7 @@ namespace Yubico.YubiKey.Scp
                 {
                     // Must be encrypted with the active sessions data encryption key
                     var encryptedKey = encryptor(privateKeyBytes);
-                    var privateKeyTlv = new TlvObject(KeyTypeEccPrivateKey, encryptedKey.Span).GetBytes();
+                    var privateKeyTlv = new TlvObject(EcPrivateKeyKeyType, encryptedKey.Span).GetBytes();
                     commandDataWriter.Write(privateKeyTlv.ToArray());
                 }
                 finally
@@ -317,7 +315,7 @@ namespace Yubico.YubiKey.Scp
                 }
 
                 // Write the ECC parameters
-                var paramsTlv = new TlvObject(KeyTypeEccKeyParams, new byte[] { 0x00 }).GetBytes();
+                var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0x00 }).GetBytes();
                 commandDataWriter.Write(paramsTlv.ToArray());
                 commandDataWriter.Write((byte)0);
 
@@ -332,7 +330,6 @@ namespace Yubico.YubiKey.Scp
                 ValidateCheckSum(responseData.Span, expectedResponseData);
 
                 _log.LogInformation("Successsfully put private key for KeyRef {KeyRef}", keyRef);
-
             }
             catch (Exception ex)
             {
@@ -376,11 +373,11 @@ namespace Yubico.YubiKey.Scp
                         .Concat(pkParams.Q.X)
                         .Concat(pkParams.Q.Y).ToArray().AsSpan();
 
-                byte[] publicKeyTlvData = new TlvObject(KeyTypeEccPublicKey, publicKeyRawData).GetBytes().ToArray();
+                byte[] publicKeyTlvData = new TlvObject(EcPublicKeyKeyType, publicKeyRawData).GetBytes().ToArray();
                 commandDataWriter.Write(publicKeyTlvData);
 
                 // Write the ECC parameters
-                var paramsTlv = new TlvObject(KeyTypeEccKeyParams, new byte[] { 0x00 }).GetBytes();
+                var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0x00 }).GetBytes();
                 commandDataWriter.Write(paramsTlv.ToArray());
                 commandDataWriter.Write((byte)0);
 
@@ -526,7 +523,7 @@ namespace Yubico.YubiKey.Scp
                     : $", replacing KVN=0x{replaceKvn:X2}");
 
             // Create tlv data for the command
-            var paramsTlv = new TlvObject(KeyTypeEccKeyParams, new byte[] { 0 }).GetBytes();
+            var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0 }).GetBytes();
             byte[] commandData = new byte[paramsTlv.Length + 1];
             commandData[0] = keyRef.VersionNumber;
             paramsTlv.CopyTo(commandData.AsMemory(1));
@@ -538,7 +535,7 @@ namespace Yubico.YubiKey.Scp
 
             // Parse the response, extract the public point
             var tlvReader = new TlvReader(response.GetData());
-            var encodedPoint = tlvReader.ReadValue(KeyTypeEccPublicKey).Span;
+            var encodedPoint = tlvReader.ReadValue(EcPublicKeyKeyType).Span;
 
             // Create the ECParameters with the public point
             var eccPublicKey = encodedPoint.CreateEcPublicKeyFromBytes();
@@ -613,9 +610,9 @@ namespace Yubico.YubiKey.Scp
 
             // Create and serialize data
             Memory<byte> certDataEncoded = TlvObjects.EncodeMany(
-                        new TlvObject(ControlReferenceTag, new TlvObject(KidKvnTag, keyRef.GetBytes).GetBytes().Span),
+                new TlvObject(ControlReferenceTag, new TlvObject(KidKvnTag, keyRef.GetBytes).GetBytes().Span),
                 new TlvObject(CertificateStoreTag, certDataMs.ToArray())
-            );
+                );
 
             StoreData(certDataEncoded);
 
@@ -630,10 +627,10 @@ namespace Yubico.YubiKey.Scp
         /// certificate signed by the CA can be used.
         /// </remarks>
         /// <param name="keyRef">A reference to the key for which the allowlist will be stored.</param>
-        /// <param name="serials">The list of certificate serial numbers to be stored in the allowlist.</param>
+        /// <param name="serials">The list of certificate serial numbers (in hexadecimal string format) to be stored in the allowlist for the given <see cref="KeyReference"/>.</param>
         /// <exception cref="ArgumentException">Thrown when a serial number cannot be encoded properly.</exception>
         /// <exception cref="SecureChannelException">Thrown when there was an scp error, described in the exception message.</exception>
-        public void StoreAllowlist(KeyReference keyRef, IReadOnlyList<BigInteger> serials)
+        public void StoreAllowlist(KeyReference keyRef, IReadOnlyCollection<string> serials)
         {
             _log.LogDebug("Storing allow list for {KeyRef}", keyRef);
 
@@ -642,7 +639,7 @@ namespace Yubico.YubiKey.Scp
             {
                 try
                 {
-                    byte[] serialAsBytes = serial.ToByteArray();
+                    byte[] serialAsBytes = Base16.DecodeText(serial);
                     byte[] serialTlvEncoded = new TlvObject(SerialTag, serialAsBytes).GetBytes().ToArray();
                     serialDataMs.Write(serialTlvEncoded, 0, serialTlvEncoded.Length);
                 }
@@ -655,12 +652,19 @@ namespace Yubico.YubiKey.Scp
             Memory<byte> serialsDataEncoded = TlvObjects.EncodeMany(
                 new TlvObject(ControlReferenceTag, new TlvObject(KidKvnTag, keyRef.GetBytes).GetBytes().Span),
                 new TlvObject(SerialsAllowListTag, serialDataMs.ToArray())
-            );
+                );
 
             StoreData(serialsDataEncoded);
 
             _log.LogInformation("Certificate bundle stored");
         }
+
+        /// <summary>
+        /// Clears the allow list for the given <see cref="KeyReference"/>
+        /// </summary>
+        /// <seealso cref="StoreAllowlist"/>
+        /// <param name="keyRef">The key reference that holds the allow list</param>
+        public void ClearAllowList(KeyReference keyRef) => StoreAllowlist(keyRef, Array.Empty<string>());
 
         /// <summary>
         /// Stores data in the Security Domain or targeted Application on the YubiKey using the GlobalPlatform STORE DATA command.
@@ -735,7 +739,8 @@ namespace Yubico.YubiKey.Scp
         {
             _log.LogInformation("Getting certificates for key={KeyRef}", keyReference);
 
-            var nestedTlv = new TlvObject(ControlReferenceTag,
+            var nestedTlv = new TlvObject(
+                ControlReferenceTag,
                 new TlvObject(KidKvnTag, keyReference.GetBytes).GetBytes().Span
                 ).GetBytes();
 
@@ -770,13 +775,11 @@ namespace Yubico.YubiKey.Scp
             {
                 try
                 {
-
                     var klocData = GetData(CaKlocIdentifiersTag);
                     dataMs.Write(klocData.Span.ToArray(), 0, klocData.Length);
                 }
-                catch (SecureChannelException e) //when (/*e.StatusWord == SWConstants.ReferencedDataNotFound*/)
+                catch (SecureChannelException) //when (/*e.StatusWord == SWConstants.ReferencedDataNotFound*/)
                 {
-
                     // Ignore this specific exception
                 }
             }
@@ -788,7 +791,7 @@ namespace Yubico.YubiKey.Scp
                     var klccData = GetData(CaKlccIdentifiersTag);
                     dataMs.Write(klccData.Span.ToArray(), 0, klccData.Length);
                 }
-                catch (SecureChannelException e) //when (/*e.StatusWord == SWConstants.ReferencedDataNotFound*/)
+                catch (SecureChannelException) //when (/*e.StatusWord == SWConstants.ReferencedDataNotFound*/)
                 {
                     // Ignore this specific exception
                 }
@@ -813,7 +816,6 @@ namespace Yubico.YubiKey.Scp
             return identifiers;
         }
 
-
         public Memory<byte> GetCardRecognitionData()
         {
             _log.LogInformation("Getting card recognition deta");
@@ -834,14 +836,12 @@ namespace Yubico.YubiKey.Scp
         public ReadOnlyMemory<byte> GetData(int tag, ReadOnlyMemory<byte>? data = null)
         {
             var connection = _connection ?? UnauthenticatedConnection;
-
             var command = new GetDataCommand(tag, data);
             var response = connection.SendCommand(command);
             ThrowIfFailed(response);
 
             return response.GetData();
         }
-
 
         /// <summary>
         /// Perform a factory reset of the Security Domain.
@@ -919,7 +919,7 @@ namespace Yubico.YubiKey.Scp
                     string.Format(
                         CultureInfo.CurrentCulture,
                         ExceptionMessages.YubiKeyOperationFailed,
-                         response.StatusMessage));
+                        response.StatusMessage));
             }
         }
 

@@ -288,11 +288,7 @@ namespace Yubico.YubiKey.Scp
             using var memoryStream = new MemoryStream();
             foreach (var bytes in values)
             {
-#if NETSTANDARD2_1_OR_GREATER
-                memoryStream.Write(bytes.Span);
-#else
                 memoryStream.Write(bytes.Span.ToArray(), 0, bytes.Length);
-#endif
             }
 
             return memoryStream.ToArray();
