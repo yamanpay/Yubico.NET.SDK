@@ -15,8 +15,8 @@
 using System;
 using System.Linq;
 using Xunit;
+using Yubico.YubiKey.Piv;
 using Yubico.YubiKey.Piv.Commands;
-using Yubico.YubiKey.Scp03;
 using Yubico.YubiKey.TestUtilities;
 using GetDataCommand = Yubico.YubiKey.Scp.Commands.GetDataCommand;
 
@@ -255,27 +255,69 @@ namespace Yubico.YubiKey.Scp
             }
         }
 
-        [Fact]
-        public void TryConnectScp_WithApplicationId_Succeeds()
-        {
-            var isValid =
-                Device.TryConnect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
-            using (connection)
-            {
-                Assert.True(isValid);
-                Assert.NotNull(connection);
 
-                var cmd = new VerifyPinCommand(_defaultPin);
-                var rsp = connection.SendCommand(cmd);
-                Assert.Equal(ResponseStatus.Success, rsp.Status);
-            }
+        [Theory]
+        [InlineData(StandardTestDevice.Fw5)]
+        public void PivSession_TryVerifyPinAndGetMetaData_Succeeds(
+            StandardTestDevice testDeviceType)
+        {
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(testDeviceType);
+            Assert.True(device.FirmwareVersion >= FirmwareVersion.V5_3_0);
+            Assert.True(device.HasFeature(YubiKeyFeature.Scp03));
+
+            using var pivSession = new PivSession(device, Scp03KeyParameters.DefaultKey);
+
+            var result = pivSession.TryVerifyPin(
+                new ReadOnlyMemory<byte>(new byte[] { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36 }),
+                out _);
+
+            Assert.True(result);
+
+            var metadata = pivSession.GetMetadata(PivSlot.Pin)!;
+            Assert.Equal(3, metadata.RetryCount);
         }
 
         [Fact]
-        public void TryConnectScp_WithApplication_Succeeds()
+        public void Device_Connect_With_Application_Succeeds()
         {
-            var isValid =
-                Device.TryConnect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(
+                Transport.SmartCard, FirmwareVersion.V5_3_0);
+
+            using var connection = device.Connect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey);
+            Assert.NotNull(connection);
+
+            var cmd = new VerifyPinCommand(_defaultPin);
+            var rsp = connection!.SendCommand(cmd);
+            Assert.Equal(ResponseStatus.Success, rsp.Status);
+        }
+
+        [Fact]
+        public void Device_Connect_ApplicationId_Succeeds()
+        {
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(
+                Transport.SmartCard, FirmwareVersion.V5_3_0);
+
+            using IYubiKeyConnection connection = device.Connect(
+                YubiKeyApplication.Piv.GetIso7816ApplicationId(), Scp03KeyParameters.DefaultKey);
+
+            Assert.NotNull(connection);
+
+            var cmd = new VerifyPinCommand(_defaultPin);
+            var rsp = connection!.SendCommand(cmd);
+            Assert.Equal(ResponseStatus.Success, rsp.Status);
+        }
+
+        [Fact]
+        public void Device_TryConnect_With_Application_Succeeds()
+        {
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(
+                Transport.SmartCard, FirmwareVersion.V5_3_0);
+
+            var isValid = device.TryConnect(
+                YubiKeyApplication.Piv,
+                Scp03KeyParameters.DefaultKey,
+                out var connection);
+
             using (connection)
             {
                 Assert.NotNull(connection);
@@ -287,29 +329,22 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void ConnectScp_WithApplication_Succeeds()
+        public void Device_TryConnect_With_ApplicationId_Succeeds()
         {
-            using IYubiKeyConnection connection =
-                Device.Connect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey);
-            Assert.NotNull(connection);
+            var device = IntegrationTestDeviceEnumeration.GetTestDevice(
+                Transport.SmartCard, FirmwareVersion.V5_3_0);
 
-            var cmd = new VerifyPinCommand(_defaultPin);
-            var rsp = connection.SendCommand(cmd);
-            Assert.Equal(ResponseStatus.Success, rsp.Status);
-        }
+            var isValid = device.TryConnect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey,
+                out var connection);
 
-        [Fact]
-        public void ConnectScp_WithApplicationId_Succeeds()
-        {
-            using IYubiKeyConnection connection = Device.Connect(
-                YubiKeyApplication.Piv.GetIso7816ApplicationId(),
-                Scp03KeyParameters.DefaultKey);
-
-            Assert.NotNull(connection);
-
-            var cmd = new VerifyPinCommand(_defaultPin);
-            var rsp = connection!.SendCommand(cmd);
-            Assert.Equal(ResponseStatus.Success, rsp.Status);
+            using (connection)
+            {
+                Assert.True(isValid);
+                Assert.NotNull(connection);
+                var cmd = new VerifyPinCommand(_defaultPin);
+                var rsp = connection!.SendCommand(cmd);
+                Assert.Equal(ResponseStatus.Success, rsp.Status);
+            }
         }
 
         #region Helpers
