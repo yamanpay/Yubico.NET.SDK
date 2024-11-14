@@ -18,7 +18,6 @@ using Microsoft.Extensions.Logging;
 using Yubico.Core.Devices.Hid;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.YubiKey.Scp;
-using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
 {
@@ -46,13 +45,13 @@ namespace Yubico.YubiKey
         }
 
         [Obsolete("Obsolete")]
-        internal IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, StaticKeys scp03Keys)
+        internal IScp03YubiKeyConnection CreateScpConnection(YubiKeyApplication application, Yubico.YubiKey.Scp03.StaticKeys scp03Keys)
         {
 
             if (_smartCardDevice is null)
             {
-                _log.LogError("No smart card interface present. Unable to establish SCP connection to YubiKey.");
-                throw new InvalidOperationException("TODO");
+                string errorMessage = "No smart card interface present. Unable to establish SCP connection to YubiKey."; // TODO Reusable error messaGE
+                throw new InvalidOperationException(errorMessage);
             }
 
             _log.LogInformation("Connecting via the SmartCard interface using SCP03.");
@@ -60,15 +59,22 @@ namespace Yubico.YubiKey
 
             return new Scp03Connection(_smartCardDevice, application, scp03Keys);
         }
-        
-        public IYubiKeyConnection CreateScpConnection(YubiKeyApplication application, ScpKeyParameters keyParameters)
+
+        /// <summary>
+        /// Creates a connection to the YubiKey for a specific application using SCP.
+        /// </summary>
+        /// <param name="application">The application to connect to.</param>
+        /// <param name="keyParameters">The parameters for the SCP connection.</param>
+        /// <returns>The connection to the YubiKey, or null if unable to connect.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if no suitable interface is present.</exception>
+        public IScpYubiKeyConnection CreateScpConnection(YubiKeyApplication application, ScpKeyParameters keyParameters)
         {
-            LogConnectionAttempt(application, keyParameters); // No need
+            LogConnectionAttempt(application, keyParameters);
 
             if (_smartCardDevice is null)
             {
-                _log.LogError("No smart card interface present. Unable to establish SCP connection to YubiKey.");
-                throw new InvalidOperationException("TODO");
+                string errorMessage = "No smart card interface present. Unable to establish SCP connection to YubiKey.";
+                throw new InvalidOperationException(errorMessage);
             }
 
             _log.LogInformation("Connecting via the SmartCard interface using SCP03.");
@@ -77,7 +83,13 @@ namespace Yubico.YubiKey
             return new ScpConnection(_smartCardDevice, application, keyParameters);
         }
 
-        public IYubiKeyConnection CreateNonScpConnection(YubiKeyApplication application)
+        /// <summary>
+        /// Creates a connection to the YubiKey for a specific application that doesn't use the SmartCard interface (i.e. not SCP03).
+        /// </summary>
+        /// <param name="application">The application to connect to.</param>
+        /// <returns>The connection to the YubiKey, or null if unable to connect.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if no suitable interface is present.</exception>
+        public IYubiKeyConnection CreateConnection(YubiKeyApplication application)
         {
             if (_smartCardDevice != null)
             {
@@ -87,7 +99,7 @@ namespace Yubico.YubiKey
                 return new SmartCardConnection(_smartCardDevice, application);
             }
 
-            if (application == YubiKeyApplication.Otp && _hidKeyboardDevice != null)
+            if (_hidKeyboardDevice != null && application == YubiKeyApplication.Otp)
             {
                 _log.LogInformation("Connecting via the Keyboard interface.");
                 
@@ -95,16 +107,16 @@ namespace Yubico.YubiKey
                 return new KeyboardConnection(_hidKeyboardDevice);
             }
 
-            if ((application == YubiKeyApplication.Fido2 || application == YubiKeyApplication.FidoU2f) && _hidFidoDevice != null)
+            if (_hidFidoDevice != null && (application == YubiKeyApplication.Fido2 || application == YubiKeyApplication.FidoU2f))
             {
                 _log.LogInformation("Connecting via the FIDO interface.");
                 
                 WaitForReclaimTimeout(Transport.HidFido);
                 return new FidoConnection(_hidFidoDevice);
             }
-            
-            _log.LogError("No suitable interface present. Unable to establish connection to YubiKey.");
-            throw new InvalidOperationException("TODO");
+
+            string errorMessage = "No suitable interface present. Unable to establish connection to YubiKey.";
+            throw new InvalidOperationException(errorMessage);
         }
 
         // This function handles waiting for the reclaim timeout on the YubiKey to elapse. The reclaim timeout requires
@@ -182,15 +194,17 @@ namespace Yubico.YubiKey
             ScpKeyParameters keyParameters)
         {
             string applicationName = GetApplicationName(application);
-            string scpInfo = keyParameters is Scp03KeyParameters 
-                ? "SCP03"
-                : "SCP11"; //TODO make better
+            string scpInfo = keyParameters switch
+            {
+                Scp03KeyParameters scp03KeyParameters => $"SCP03 ({scp03KeyParameters.KeyReference})",
+                Scp11KeyParameters scp11KeyParameters => $"SCP11 ({scp11KeyParameters.KeyReference})",
+                _ => "Unknown"
+            };
 
             _log.LogInformation("YubiKey connecting to {Application} application over {ScpInfo}", applicationName, scpInfo);
         }
-        
+
         private static string GetApplicationName(YubiKeyApplication application) =>
             Enum.GetName(typeof(YubiKeyApplication), application) ?? "Unknown";
-        
     }
 }

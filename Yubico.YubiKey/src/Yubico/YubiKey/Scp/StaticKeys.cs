@@ -15,7 +15,7 @@
 using System;
 using System.Security.Cryptography;
 
-namespace Yubico.YubiKey.Scp03
+namespace Yubico.YubiKey.Scp
 {
     /// <summary>
     /// Represents a triple of SCP03 static keys shared with the device.
@@ -34,7 +34,6 @@ namespace Yubico.YubiKey.Scp03
     /// device.
     /// </para>
     /// </remarks>
-    [Obsolete("Use new Static Keys")]
     public class StaticKeys : IDisposable
     {
         private const int KeySizeBytes = 16;
@@ -94,7 +93,7 @@ namespace Yubico.YubiKey.Scp03
 
                 _keyVersionNumber = value;
             }
-        } //TODO replace this?
+        }
 
         /// <summary>
         /// AES128 shared secret key used to calculate the Session-MAC key. Also

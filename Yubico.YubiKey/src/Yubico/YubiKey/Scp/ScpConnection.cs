@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using Yubico.Core.Devices.SmartCard;
 using Yubico.YubiKey.Pipelines;
 
@@ -19,6 +20,11 @@ namespace Yubico.YubiKey.Scp
 {
     internal class ScpConnection : SmartCardConnection, IScpYubiKeyConnection
     {
+
+        public ScpKeyParameters KeyParameters => _scpApduTransform.KeyParameters;
+
+        DataEncryptor? IScpYubiKeyConnection.DataEncryptor => _scpApduTransform.DataEncryptor;
+
         private bool _disposed;
         private readonly ScpApduTransform _scpApduTransform;
 
@@ -39,56 +45,53 @@ namespace Yubico.YubiKey.Scp
 
             _scpApduTransform = nextPipeline;
         }
-        
-        // public ScpConnection(
-        //     ISmartCardDevice smartCardDevice, 
-        //     ReadOnlyMemory<byte> applicationId, 
-        //     ScpKeyParameters scpKeys)
-        //     : base(smartCardDevice, YubiKeyApplication.Unknown, applicationId.ToArray()) //TODO Consider using the Span
-        // {
-        //     var application = YubiKeyApplication.Unknown;
-        //     if (applicationId.Span.SequenceEqual(YubiKeyApplication.Fido2.GetIso7816ApplicationId()))
-        //     {
-        //         application = YubiKeyApplication.Fido2;
-        //     }
-        //     else if (applicationId.Span.SequenceEqual(YubiKeyApplication.Otp.GetIso7816ApplicationId()))
-        //     {
-        //         application = YubiKeyApplication.Otp;
-        //     }
-        //
-        //     _scpApduTransform = SetObject(application, scpKeys);
-        // }
-        
-        public ScpKeyParameters KeyParameters => _scpApduTransform.KeyParameters;
 
-        DataEncryptor? IScpYubiKeyConnection.DataEncryptor => _scpApduTransform.DataEncryptor;
+        public ScpConnection(
+            ISmartCardDevice smartCardDevice,
+            ReadOnlyMemory<byte> applicationId,
+            ScpKeyParameters scpKeys)
+            : base(smartCardDevice, YubiKeyApplication.Unknown, applicationId.ToArray())
+        {
+            var application = YubiKeyApplication.Unknown;
 
-        // private ScpApduTransform SetObject( TODO Is this needed? I dont why
-        //     YubiKeyApplication application,
-        //     ScpKeyParameters keyParameters)
-        // {
-        //     var previousPipeline = GetPipeline();
-        //     var appendedPipeline = new ScpApduTransform(previousPipeline, keyParameters);
-        //     
-        //     // Is it even possible to connect to Fido2 and Otp with SCP?
-        //     // IApduTransform apduPipeline = application switch
-        //     // {
-        //     //     YubiKeyApplication.Fido2 => new FidoErrorTransform(appendedPipeline),
-        //     //     YubiKeyApplication.Otp => new OtpErrorTransform(appendedPipeline),
-        //     //     _ => appendedPipeline
-        //     // }; 
-        //     
-        //     // Set parent pipeline
-        //     // SetPipeline(apduPipeline);
-        //     // apduPipeline.Setup();
-        //
-        //     // Set parent pipeline
-        //     SetPipeline(appendedPipeline);
-        //     appendedPipeline.Setup();
-        //     
-        //     return appendedPipeline;
-        // }
-        
+
+            if (applicationId.Span.SequenceEqual(YubiKeyApplication.Fido2.GetIso7816ApplicationId()))
+            {
+                application = YubiKeyApplication.Fido2;
+            }
+            else if (applicationId.Span.SequenceEqual(YubiKeyApplication.Otp.GetIso7816ApplicationId()))
+            {
+                application = YubiKeyApplication.Otp;
+            }
+
+            _scpApduTransform = SetObject(application, scpKeys);
+        }
+
+        private ScpApduTransform SetObject(
+            YubiKeyApplication application,
+            ScpKeyParameters keyParameters)
+        {
+            var previousPipeline = GetPipeline();
+            var scpPipeline = new ScpApduTransform(previousPipeline, keyParameters);
+
+            IApduTransform scpWithErrorHandler = application switch
+            {
+                YubiKeyApplication.Fido2 => new FidoErrorTransform(scpPipeline),
+                YubiKeyApplication.Otp => new OtpErrorTransform(scpPipeline),
+                _ => scpPipeline
+            };
+
+            //Set parent pipeline
+            SetPipeline(scpWithErrorHandler);
+            scpWithErrorHandler.Setup();
+
+            // Set parent pipeline
+            SetPipeline(scpPipeline);
+            scpPipeline.Setup();
+
+            return scpPipeline;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (!_disposed)

@@ -14,15 +14,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Org.BouncyCastle.Math;
-using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Pkcs;
 using Org.BouncyCastle.Security;
 using Xunit;
@@ -81,7 +77,7 @@ namespace Yubico.YubiKey.Scp
             var ecDsaPublicKey = leaf.PublicKey.GetECDsaPublicKey()!.ExportParameters(false);
             var keyParams = new Scp11KeyParameters(keyReference, ecDsaPublicKey);
 
-            // Try create authenticated session using key params and public key from yubikey
+            // Try to create authenticated session using key params and public key from yubikey
             using (var session = new SecurityDomainSession(Device, keyParams))
             {
                 var result = session.GetKeyInformation();
@@ -90,7 +86,7 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void Scp11b_Import_Succeeds() //Works
+        public void Scp11b_Import_Succeeds() // Works
         {
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x2);
             var ecDsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -107,7 +103,7 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void GetCertificates_IsNotEmpty() //Works
+        public void GetCertificates_IsNotEmpty() // Works
         {
             using var session = new SecurityDomainSession(Device);
 
@@ -118,7 +114,7 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void Scp11b_StoreCertificates_SavesCertificatesOnYubikey()
+        public void Scp11b_StoreCertificates_CanBeRetrieved()
         {
             var keyReference = new KeyReference(ScpKid.Scp11b, 0x1);
 
@@ -178,7 +174,7 @@ namespace Yubico.YubiKey.Scp
                 };
 
                 // Only the above serials shall work. 
-                session.StoreAllowlist(oceKeyRef, serials); 
+                session.StoreAllowlist(oceKeyRef, serials);
             }
 
             using (var session = new SecurityDomainSession(Device, keyParams))
@@ -188,11 +184,10 @@ namespace Yubico.YubiKey.Scp
         }
 
         [Fact]
-        public void Scp11a_WithAllowList_BlocksUnapprovedSerials() // Works. 
+        public void Scp11a_WithAllowList_BlocksUnapprovedSerials() // Works
         {
-            byte kvn = 0x03;
+            const byte kvn = 0x03;
             var oceKeyRef = new KeyReference(OceKid, kvn);
-
 
             Scp03KeyParameters scp03KeyParams;
             using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
@@ -247,8 +242,8 @@ namespace Yubico.YubiKey.Scp
         [Fact]
         public void Scp11a_Authenticate_Succeeds() // Works
         {
-            byte kvn = 0x03;
-            var keyReference = new KeyReference(ScpKid.Scp11a, kvn);
+            const byte kvn = 0x03;
+            var keyRef = new KeyReference(ScpKid.Scp11a, kvn);
 
             // Start authenticated session with default key
             Scp11KeyParameters keyParams;
@@ -260,7 +255,7 @@ namespace Yubico.YubiKey.Scp
             // Start authenticated session using new key params and public key from yubikey
             using (var session = new SecurityDomainSession(Device, keyParams))
             {
-                session.DeleteKeySet(keyReference, false);
+                session.DeleteKeySet(keyRef);
             }
         }
 
@@ -279,7 +274,7 @@ namespace Yubico.YubiKey.Scp
             Assert.Throws<SecureChannelException>(() =>
             {
                 using var session = new SecurityDomainSession(Device, keyParams);
-                session.DeleteKeySet(keyReference, false);
+                session.DeleteKeySet(keyReference);
             });
         }
 
@@ -305,7 +300,7 @@ namespace Yubico.YubiKey.Scp
             session.PutKey(oceRef, ocePublicKey, 0);
 
             // Get Oce subject key identifier
-            var ski = GetSki(oceCerts.Ca); //20 byte
+            var ski = GetSki(oceCerts.Ca);
             if (ski.IsEmpty)
             {
                 throw new InvalidOperationException("CA certificate missing Subject Key Identifier");
@@ -314,6 +309,20 @@ namespace Yubico.YubiKey.Scp
             // Store the key identifier with the referenced off card entity on the Yubikey
             session.StoreCaIssuer(oceRef, ski);
 
+            var (certChain, privateKey) = GetOceCertificateChainAndPrivateKey();
+
+            // Now we have the EC private key parameters and cert chain
+            return new Scp11KeyParameters(
+                sessionRef,
+                newPublicKey.Parameters,
+                oceRef,
+                privateKey,
+                certChain
+            );
+        }
+
+        private static (List<X509Certificate2> certChain, ECParameters privateKey) GetOceCertificateChainAndPrivateKey()
+        {
             // Load the OCE PKCS12 using Bouncy Castle
             using var pkcsStream = new MemoryStream(Scp11TestData.Oce.ToArray());
             var pkcs12Store = new Pkcs12Store(pkcsStream, Scp11TestData.OcePassword.ToArray());
@@ -332,7 +341,8 @@ namespace Yubico.YubiKey.Scp
                 throw new InvalidOperationException("Private key is not an EC key");
             }
 
-            var certs = ScpCertificates.From(pkcs12Store.GetCertificateChain(alias)
+            var x509CertificateEntries = pkcs12Store.GetCertificateChain(alias);
+            var certs = ScpCertificates.From(x509CertificateEntries
                 .Select(certEntry =>
                 {
                     var cert = DotNetUtilities.ToX509Certificate(certEntry.Certificate);
@@ -349,14 +359,7 @@ namespace Yubico.YubiKey.Scp
                 certChain.Add(certs.Leaf);
             }
 
-            // Now we have the EC private key parameters and cert chain
-            return new Scp11KeyParameters(
-                sessionRef,
-                newPublicKey.Parameters,
-                oceRef,
-                ConvertToECParameters(ecPrivateKey),
-                certChain
-            );
+            return (certChain, ConvertToECParameters(ecPrivateKey));
         }
 
         static ECParameters ConvertToECParameters(
@@ -445,7 +448,7 @@ namespace Yubico.YubiKey.Scp
             // assumeFalse("SCP03 management not supported over NFC on FIPS capable devices",
             //     state.getDeviceInfo().getFipsCapable() != 0 && !state.isUsbTransport()); // todo
 
-            var scp03Ref = new KeyReference((byte)0x01, (byte)0x01);
+            var scp03Ref = new KeyReference(0x01, 0x01);
             var staticKeys = new StaticKeys(
                 GetRandomBytes(16),
                 GetRandomBytes(16),

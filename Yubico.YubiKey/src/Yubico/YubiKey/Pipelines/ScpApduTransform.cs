@@ -27,7 +27,7 @@ namespace Yubico.YubiKey.Pipelines
     ///
     /// Commands and responses sent through this pipeline are confidential and authenticated.
     ///
-    /// Requires pre-shared <see cref="Scp03.StaticKeys"/>. TODO
+    /// Requires pre-shared <see cref="StaticKeys"/>.
     /// </remarks>
     // broken into two transforms
     internal class ScpApduTransform : IApduTransform, IDisposable

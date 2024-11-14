@@ -282,7 +282,9 @@ namespace Yubico.YubiKey.Piv
             byte[] key3 = {
                 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x11, 0x22
             };
-            var newKeys = new StaticKeys(key2, key1, key3)
+#pragma warning disable CS0618 // Type or member is obsolete
+            var newKeys = new Yubico.YubiKey.Scp03.StaticKeys(key2, key1, key3)
+#pragma warning restore CS0618 // Type or member is obsolete
             {
                 KeyVersionNumber = 2
             };

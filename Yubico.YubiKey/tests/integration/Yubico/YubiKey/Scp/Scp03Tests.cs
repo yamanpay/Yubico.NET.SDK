@@ -54,9 +54,6 @@ namespace Yubico.YubiKey.Scp
                 sk,
                 sk));
 
-            // assumeFalse("SCP03 not supported over NFC on FIPS capable devices", todo
-            //     state.getDeviceInfo().getFipsCapable() != 0 && !state.isUsbTransport());
-
             using (var session = new SecurityDomainSession(Device, Scp03KeyParameters.DefaultKey))
             {
                 session.PutKey(newKeyParams.KeyReference, newKeyParams.StaticKeys, 0);
@@ -262,7 +259,7 @@ namespace Yubico.YubiKey.Scp
         public void TryConnectScp_WithApplicationId_Succeeds()
         {
             var isValid =
-                Device.TryConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
+                Device.TryConnect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
             using (connection)
             {
                 Assert.True(isValid);
@@ -278,7 +275,7 @@ namespace Yubico.YubiKey.Scp
         public void TryConnectScp_WithApplication_Succeeds()
         {
             var isValid =
-                Device.TryConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
+                Device.TryConnect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey, out var connection);
             using (connection)
             {
                 Assert.NotNull(connection);
@@ -293,7 +290,7 @@ namespace Yubico.YubiKey.Scp
         public void ConnectScp_WithApplication_Succeeds()
         {
             using IYubiKeyConnection connection =
-                Device.ConnectScp(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey);
+                Device.Connect(YubiKeyApplication.Piv, Scp03KeyParameters.DefaultKey);
             Assert.NotNull(connection);
 
             var cmd = new VerifyPinCommand(_defaultPin);
@@ -304,7 +301,7 @@ namespace Yubico.YubiKey.Scp
         [Fact]
         public void ConnectScp_WithApplicationId_Succeeds()
         {
-            using IYubiKeyConnection connection = Device.ConnectScp(
+            using IYubiKeyConnection connection = Device.Connect(
                 YubiKeyApplication.Piv.GetIso7816ApplicationId(),
                 Scp03KeyParameters.DefaultKey);
 

@@ -22,7 +22,6 @@ using Yubico.YubiKey.Cryptography;
 using Yubico.YubiKey.InterIndustry.Commands;
 using Yubico.YubiKey.Piv.Commands;
 using Yubico.YubiKey.Scp;
-using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey.Piv
 {
@@ -242,13 +241,13 @@ namespace Yubico.YubiKey.Piv
         ///     This exception is thrown when unable to determine the management key type.
         /// </exception>
         [Obsolete("Use new Scp")]
-        public PivSession(IYubiKeyDevice yubiKey, StaticKeys scp03Keys)
+        public PivSession(IYubiKeyDevice yubiKey, Yubico.YubiKey.Scp03.StaticKeys scp03Keys)
             : this(scp03Keys, yubiKey)
         {
         }
         
         [Obsolete("Use new Scp")]
-        private PivSession(StaticKeys? scp03Keys, IYubiKeyDevice yubiKey)
+        private PivSession(Yubico.YubiKey.Scp03.StaticKeys? scp03Keys, IYubiKeyDevice yubiKey)
         {
             _log.LogInformation(
                 "Create a new instance of PivSession" + (scp03Keys is null
@@ -286,7 +285,9 @@ namespace Yubico.YubiKey.Piv
             };
 
             _log.LogInformation($"Create a new instance of PivSession over {scpType}");
-            Connection = yubiKey.ConnectScp(YubiKeyApplication.Piv, keyParameters);
+            Connection = keyParameters is null
+                ? yubiKey.Connect(YubiKeyApplication.Piv)
+                : yubiKey.Connect(YubiKeyApplication.Piv, keyParameters);
 
             ResetAuthenticationStatus();
             UpdateManagementKey(yubiKey);

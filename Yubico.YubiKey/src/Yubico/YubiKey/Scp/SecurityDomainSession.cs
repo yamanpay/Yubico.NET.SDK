@@ -88,9 +88,9 @@ namespace Yubico.YubiKey.Scp
     /// </remarks>
     public sealed class SecurityDomainSession : IDisposable
     {
-        private const byte EcPrivateKeyKeyType = 0xB1;
-        private const byte EcKeyKeyType = 0xF0;
+        private const byte EcKeyType = 0xF0;
         private const byte EcPublicKeyKeyType = 0xB0;
+        private const byte EcPrivateKeyKeyType = 0xB1;
         private const byte AesKeyType = 0x88;
         private const byte ControlReferenceTag = 0xA6;
         private const byte KidKvnTag = 0x83;
@@ -130,12 +130,9 @@ namespace Yubico.YubiKey.Scp
         /// <code language="csharp">
         ///   if (YubiKeyDevice.TryGetYubiKey(serialNumber, out IYubiKeyDevice yubiKeyDevice))
         ///   {
-        ///       var staticKeys = new StaticKeys();
-        ///       // Note that you do not need to call the "WithScp" method when
-        ///       // using the ScpSession class.
-        ///       using (var scp = new ScpSession(yubiKeyDevice, staticKeys))
+        ///       using (var scp = new SecurityDomainSession(yubiKeyDevice, Scp03KeyParameters.DefaultKey))
         ///       {
-        ///           // Perform SCP operations.
+        ///           // Perform SCP operations while authenticated with SCP03.
         ///       }
         ///   }
         /// </code>
@@ -168,7 +165,7 @@ namespace Yubico.YubiKey.Scp
             }
 
             _yubiKey = yubiKey;
-            _connection = yubiKey.ConnectScp(YubiKeyApplication.SecurityDomain, scpKeyParameters);
+            _connection = yubiKey.Connect(YubiKeyApplication.SecurityDomain, scpKeyParameters);
         }
 
         /// <summary>
@@ -315,7 +312,7 @@ namespace Yubico.YubiKey.Scp
                 }
 
                 // Write the ECC parameters
-                var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0x00 }).GetBytes();
+                var paramsTlv = new TlvObject(EcKeyType, new byte[] { 0x00 }).GetBytes();
                 commandDataWriter.Write(paramsTlv.ToArray());
                 commandDataWriter.Write((byte)0);
 
@@ -377,7 +374,7 @@ namespace Yubico.YubiKey.Scp
                 commandDataWriter.Write(publicKeyTlvData);
 
                 // Write the ECC parameters
-                var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0x00 }).GetBytes();
+                var paramsTlv = new TlvObject(EcKeyType, new byte[] { 0x00 }).GetBytes();
                 commandDataWriter.Write(paramsTlv.ToArray());
                 commandDataWriter.Write((byte)0);
 
@@ -523,7 +520,7 @@ namespace Yubico.YubiKey.Scp
                     : $", replacing KVN=0x{replaceKvn:X2}");
 
             // Create tlv data for the command
-            var paramsTlv = new TlvObject(EcKeyKeyType, new byte[] { 0 }).GetBytes();
+            var paramsTlv = new TlvObject(EcKeyType, new byte[] { 0 }).GetBytes();
             byte[] commandData = new byte[paramsTlv.Length + 1];
             commandData[0] = keyRef.VersionNumber;
             paramsTlv.CopyTo(commandData.AsMemory(1));

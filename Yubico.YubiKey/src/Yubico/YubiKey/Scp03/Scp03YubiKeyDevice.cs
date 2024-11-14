@@ -17,6 +17,7 @@ using Yubico.YubiKey.Scp03;
 
 namespace Yubico.YubiKey
 {
+    [Obsolete("This class is obsolete and will be removed in a future release.")]
     internal class Scp03YubiKeyDevice : YubiKeyDevice
     {
         public StaticKeys StaticKeys { get; private set; }
