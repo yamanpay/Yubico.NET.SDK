@@ -19,7 +19,7 @@ using Xunit;
 
 namespace Yubico.Core.Tlv.UnitTests
 {
-    public class TlvObjectTest
+    public class TlvObjectTests
     {
         [Fact]
         public void TestDoubleByteTags()
@@ -41,6 +41,23 @@ namespace Yubico.Core.Tlv.UnitTests
             Assert.Equal(0x80, tlv.Tag);
             Assert.Equal(0, tlv.Length);
             Assert.Equal(new byte[] { 0x80, 0 }, tlv.GetBytes());
+        }
+
+
+        [Fact]
+        public void TlvObject_Encode_ReturnsCorrectBytes()
+        {
+            // Arrange
+            int tag = 0x1234;
+            byte[] value = { 0x01, 0x02, 0x03 };
+            TlvObject tlv = new TlvObject(tag, value);
+
+            // Act
+            byte[] encodedBytes = tlv.GetBytes().ToArray();
+
+            // Assert
+            byte[] expectedBytes = { 0x12, 0x34, 0x03, 0x01, 0x02, 0x03 };
+            Assert.True(encodedBytes.SequenceEqual(expectedBytes));
         }
 
         [Fact]
